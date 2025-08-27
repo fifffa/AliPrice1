@@ -8,6 +8,7 @@ import ProductDetail from "./models/productDetail.js";
 import categorieList from "./categorieList.json" with { type: "json" };
 import dbConnect from "./utils/dbConnect.js";
 import { dateKeyKST } from "./utils/dateKeyKST.js"
+import mongoose from "mongoose";
 const API = "https://api-sg.aliexpress.com/sync";
 const METHOD = "aliexpress.affiliate.product.query";
 
@@ -155,7 +156,7 @@ function parseProducts(raw) {
 
 function normalize(p) {
   return {
-    id: p.product_id,
+    _id: p.product_id,
     title: p.product_title,
     price: p.target_app_sale_price,
     currency: p.target_app_sale_price_currency,
@@ -260,6 +261,7 @@ async function fetchByCategory({ categoryId }) {
 (async () => {
   const limit = pLimit(10); // 동시에 7개만 실행
        
+  await dbConnect();
 
 
 
@@ -270,6 +272,18 @@ async function fetchByCategory({ categoryId }) {
           categoryId: item.category_id,
         });
 
+      let res ;
+
+
+      if(!item.parent_category_id){
+      res = await ProductDetail.find({category_id_1:item.category_id})
+
+      }else{
+      res = await ProductDetail.find({category_id_2:item.category_id})
+      }
+
+      console.log('items:',items)
+      console.log('res:',res)
 
 
       if (items.length) {
@@ -283,6 +297,8 @@ async function fetchByCategory({ categoryId }) {
     })
   );
 
+
+
   // 모든 태스크를 실행 (7개 동시 제한)
   const productIdList = (await Promise.all(listTasks)).flat();
  const uniqueList = [
@@ -290,8 +306,8 @@ async function fetchByCategory({ categoryId }) {
     productIdList
       .filter((item) => item.volume >= 50) // 🔹 volume 조건 먼저 적용
       .map((item) => {
-        console.log("item.id:", item.id);
-        return [item.id, item];
+        console.log("item._id:", item._id);
+        return [item._id, item];
       })
   ).values(),
 ];
@@ -307,14 +323,13 @@ async function fetchByCategory({ categoryId }) {
 
 
 const toNum = (v) => (v == null ? v : Number(v));
-  await dbConnect();
 
 await Promise.all(
   uniqueList.map((item) =>
     limit(async () => {
       try {
         // 0) 외부 API
-        const skuData = await withRetry(() => getSkuDetail(item.id), {
+        const skuData = await withRetry(() => getSkuDetail(item._id), {
           retries: 3,
           base: 800,
           max: 10000,
@@ -325,7 +340,7 @@ await Promise.all(
         const skuList = sku.traffic_sku_info_list ?? [];
 
         // 1) 공통 파생값 (한 번만)
-        const productId = toNum(item.id);
+        const productId = toNum(item._id);
         const todayKey  = dateKeyKST();        // "YYYY-MM-DD" (KST)
 
         // 2) 본문(upsert) 베이스
@@ -478,7 +493,7 @@ await Promise.all(
       } catch (err) {
         const pid =
           (err && typeof err === "object" && "productId" in err && err.productId) ||
-          item.id;
+          item._id;
         failedIds.push(pid);
         console.warn("getSkuDetail 실패", {
           productId: pid,

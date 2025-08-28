@@ -5,16 +5,22 @@ import "dotenv/config";
 import pLimit from "p-limit";
 import { getSkuDetail } from "./skuIdPruductSearch.js";
 import ProductDetail from "./models/productDetail.js";
-import categorieList from "./categorieList.json" with { type: "json" };
+import categorieList from "./categorieList.json" assert { type: "json" };
 import dbConnect from "./utils/dbConnect.js";
-import { dateKeyKST } from "./utils/dateKeyKST.js"
+import { dateKeyKST } from "./utils/dateKeyKST.js";
 import mongoose from "mongoose";
+import { assert } from "console";
 const API = "https://api-sg.aliexpress.com/sync";
 const METHOD = "aliexpress.affiliate.product.query";
 
 const APP_KEY = process.env.AE_APP_KEY;
 const APP_SECRET = process.env.AE_APP_SECRET;
 const TRACKING_ID = process.env.AE_TRACKING_ID;
+
+const norm = (v) =>
+  (v ?? "") // null/undefined 방어
+    .toString() // 문자열화
+    .replace(/[\s\u200B-\u200D\uFEFF]/g, ""); // 일반 공백 + 제로폭 공백 제거
 
 const FIELDS = [
   "product_id",
@@ -246,7 +252,6 @@ async function fetchByCategory({ categoryId }) {
       break;
     }
 
-
     pageNo++;
   }
 
@@ -260,31 +265,23 @@ async function fetchByCategory({ categoryId }) {
 
 (async () => {
   const limit = pLimit(10); // 동시에 7개만 실행
-       
+
   await dbConnect();
 
-
-
-  const listTasks = categorieList.items.slice(0,75).map((item) =>
+  const listTasks = categorieList.items.slice(0, 75).map((item) =>
     limit(async () => {
       const { items, raw, serverCount, filteredCount, note } =
         await fetchByCategory({
           categoryId: item.category_id,
         });
 
-      let res ;
+      let res;
 
-
-      if(!item.parent_category_id){
-      res = await ProductDetail.find({category_id_1:item.category_id})
-
-      }else{
-      res = await ProductDetail.find({category_id_2:item.category_id})
+      if (!item.parent_category_id) {
+        res = await ProductDetail.find({ category_id_1: item.category_id });
+      } else {
+        res = await ProductDetail.find({ category_id_2: item.category_id });
       }
-
-      console.log('items:',items)
-      console.log('res:',res)
-
 
       if (items.length) {
         console.log(items.slice(0, 5));
@@ -292,223 +289,296 @@ async function fetchByCategory({ categoryId }) {
         console.log(raw?.error_response ?? raw);
       }
 
-
       return items;
     })
   );
 
-
-
   // 모든 태스크를 실행 (7개 동시 제한)
   const productIdList = (await Promise.all(listTasks)).flat();
- const uniqueList = [
-  ...new Map(
-    productIdList
-      .filter((item) => item.volume >= 50) // 🔹 volume 조건 먼저 적용
-      .map((item) => {
-        console.log("item._id:", item._id);
-        return [item._id, item];
-      })
-  ).values(),
-];
+  const uniqueList = [
+    ...new Map(
+      productIdList
+        .filter((item) => item.volume >= 50) // 🔹 volume 조건 먼저 적용
+        .map((item) => {
+          console.log("item._id:", item._id);
+          return [item._id, item];
+        })
+    ).values(),
+  ];
 
   const failedIds = []; // 실패한 상품 ID 모으기
 
-
-
-
-// 날짜키: "YYYY-MM-DD" (KST, +9)
+  // 날짜키: "YYYY-MM-DD" (KST, +9)
 
   // await ProductDetail.deleteMany({})
 
+  const toNum = (v) => (v == null ? v : Number(v));
 
-const toNum = (v) => (v == null ? v : Number(v));
+  await Promise.all(
+    uniqueList.map((item) =>
+      limit(async () => {
+        try {
+          // 0) 외부 API
+          const skuData = await withRetry(() => getSkuDetail(item._id), {
+            retries: 3,
+            base: 800,
+            max: 10000,
+          });
 
-await Promise.all(
-  uniqueList.map((item) =>
-    limit(async () => {
-      try {
-        // 0) 외부 API
-        const skuData = await withRetry(() => getSkuDetail(item._id), {
-          retries: 3,
-          base: 800,
-          max: 10000,
-        });
+          const info = skuData?.ae_item_info ?? {};
+          const sku = skuData?.ae_item_sku_info ?? {};
+          const skuList = sku.traffic_sku_info_list ?? [];
 
-        const info = skuData?.ae_item_info ?? {};
-        const sku  = skuData?.ae_item_sku_info ?? {};
-        const skuList = sku.traffic_sku_info_list ?? [];
+          // 1) 공통 파생값 (한 번만)
+          const productId = toNum(item._id);
+          const todayKey = dateKeyKST(); // "YYYY-MM-DD" (KST)
 
-        // 1) 공통 파생값 (한 번만)
-        const productId = toNum(item._id);
-        const todayKey  = dateKeyKST();        // "YYYY-MM-DD" (KST)
+          // 2) 본문(upsert) 베이스
+          const baseDoc = {
+            volume: item.volume ?? 0,
 
-        // 2) 본문(upsert) 베이스
-        const baseDoc = {
-          volume: item.volume ?? 0,
+            original_link: info.original_link ?? "",
+            promotion_link: item.promotion_link ?? "",
 
-          original_link: info.original_link ?? "",
-          promotion_link: item.promotion_link ?? "",
+            category_id_1: info?.display_category_id_l1 ?? 0,
+            category_id_2: info?.display_category_id_l2 ?? 0,
+            category_id_3: info?.display_category_id_l3 ?? 0,
+            category_name_1: info?.display_category_name_l1 ?? "",
+            category_name_2: info?.display_category_name_l2 ?? "",
+            category_name_3: info?.display_category_name_l3 ?? "",
 
-          category_id_1: info?.display_category_id_l1 ?? 0,
-          category_id_2: info?.display_category_id_l2 ?? 0,
-          category_id_3: info?.display_category_id_l3 ?? 0,
-          category_name_1: info?.display_category_name_l1 ?? "",
-          category_name_2: info?.display_category_name_l2 ?? "",
-          category_name_3: info?.display_category_name_l3 ?? "",
+            title: info.title ?? "",
+            store_name: info.store_name ?? "",
+            product_score: info.product_score ?? 0,
+            review_number: info.review_number ?? 0,
 
-          title: info.title ?? "",
-          store_name: info.store_name ?? "",
-          product_score: info.product_score ?? 0,
-          review_number: info.review_number ?? 0,
-
-          image_link: info.image_link ?? "",
-          additional_image_links: info.additional_image_links?.string ?? [],
-        };
-
-        // 3) 최초 생성 시에만 넣을 SKU 전체(오늘 포인트 포함)
-        const skusForInsert = skuList.map((s) => ({
-          sku_id: s.sku_id,
-          color: s.color ?? "",
-          link: s.link,
-          sku_properties: s.sku_properties ?? "",
-          currency: s.currency ?? "KRW",
-          price_by_date: {
-            [todayKey]: {
-              price_with_tax: s.price_with_tax,
-              sale_price_with_tax: s.sale_price_with_tax,
-              collected_at: new Date(),
-            },
-          },
-        }));
-
-        // 4) 기존 문서의 sku_id 집합만 얇게 조회
-        const doc = await ProductDetail.findOne(
-          { _id:productId },
-          { _id: 0, "sku_info.sku_info_list.sku_id": 1 },
-        ).lean();
-
-        const existingIds = new Set(
-          doc?.sku_info?.sku_info_list?.map((d) => d.sku_id) ?? []
-        );
-
-        const newSkus = [];
-        const updSkus = [];
-
-        for (const s of skuList) {
-          if (s?.sku_id == null) continue;
-          if (existingIds.has(s.sku_id)) {
-            updSkus.push(s);
-          } else {
-            newSkus.push(s);
-          }
-        }
-
-        // 5) bulkWrite 준비
-        const ops = [];
-
-        // 5-1) 본문 upsert (문서가 없다면 productId와 sku 전체를 한 번에 삽입)
-        ops.push({
-          updateOne: {
-            filter: { _id:productId },
-            update: {
-              $set: baseDoc,
-              $setOnInsert: {
-                productId,
-                "sku_info.sku_info_list": skusForInsert,
-              },
-            },
-            upsert: true,
-          },
-        });
-
-        // 5-2) 이미 존재하는 sku_id들에 대한 최신가 + 오늘 포인트 갱신
-        //      (각 SKU당 1개 updateOne, 하지만 네트워크는 bulk로 1회 전송)
-        for (const s of updSkus) {
-          const pricePoint = {
-            price_with_tax: s.price_with_tax,
-            sale_price_with_tax: s.sale_price_with_tax,
-            discount_rate: s.discount_rate ?? 0,
-            currency: s.currency ?? "KRW",
-            collected_at: new Date(),
+            image_link: info.image_link ?? "",
+            additional_image_links: info.additional_image_links?.string ?? [],
           };
 
-          ops.push({
-            updateOne: {
-              filter: { productId, "sku_info.sku_info_list.sku_id": s.sku_id },
-              update: {
-                $set: {
-                  "sku_info.sku_info_list.$[e].price_with_tax": s.price_with_tax,
-                  "sku_info.sku_info_list.$[e].sale_price_with_tax": s.sale_price_with_tax,
-                  "sku_info.sku_info_list.$[e].discount_rate": s.discount_rate ?? 0,
-                  "sku_info.sku_info_list.$[e].currency": s.currency ?? "KRW",
-                  "sku_info.sku_info_list.$[e].link": s.link,
-                  "sku_info.sku_info_list.$[e].color": s.color ?? "",
-                  "sku_info.sku_info_list.$[e].sku_properties": s.sku_properties ?? "",
-                  [`sku_info.sku_info_list.$[e].price_by_date.${todayKey}`]: pricePoint,
-                },
-              },
-              arrayFilters: [{ "e.sku_id": s.sku_id }],
-            },
-          });
-        }
-
-        // 5-3) 새로 발견된 sku들을 한 번에 push
-        if (newSkus.length > 0 && doc) {
-          const toPush = newSkus.map((s) => ({
+          // 3) 최초 생성 시에만 넣을 SKU 전체(오늘 포인트 포함)
+          const skusForInsert = skuList.map((s) => ({
             sku_id: s.sku_id,
             color: s.color ?? "",
             link: s.link,
-            price_with_tax: s.price_with_tax,
-            sale_price_with_tax: s.sale_price_with_tax,
-            discount_rate: s.discount_rate ?? 0,
             sku_properties: s.sku_properties ?? "",
             currency: s.currency ?? "KRW",
             price_by_date: {
               [todayKey]: {
                 price_with_tax: s.price_with_tax,
                 sale_price_with_tax: s.sale_price_with_tax,
-                discount_rate: s.discount_rate ?? 0,
-                currency: s.currency ?? "KRW",
                 collected_at: new Date(),
               },
             },
           }));
 
+          // 4) 기존 문서의 sku_id 집합만 얇게 조회
+          const doc = await ProductDetail.findById(productId, {
+            _id: 0,
+            "sku_info.sku_info_list": 1,
+          }).lean();
+
+          const existingIds = new Set(
+            doc?.sku_info?.sku_info_list?.map((d) => d.sku_id) ?? []
+          );
+
+          const newSkus = [];
+          const updSkus = [];
+          const lowPriceUpdSkus = [];
+
+          for (const s of skuList) {
+            if (s?.sku_id == null) continue;
+            if (!existingIds.has(s.sku_id)) {
+              newSkus.push(s);
+              continue;
+            }
+            const sColor = norm(s?.color);
+            if (doc?.sku_info?.sku_info_list) {
+              for (let sku of doc?.sku_info?.sku_info_list) {
+                const skuColor = norm(sku?.color);
+                if (
+                  Number(sku?.sku_id) === Number(s?.sku_id) &&
+                  skuColor === sColor
+                ) {
+                  if (
+                    sku?.price_by_date[`${todayKey}`] &&
+                    Number(
+                      sku?.price_by_date[`${todayKey}`]?.sale_price_with_tax
+                    ) > Number(s?.sale_price_with_tax)
+                  ) {
+                    lowPriceUpdSkus.push(s);
+                  } else if (!sku?.price_by_date[`${todayKey}`]) {
+                    updSkus.push(s);
+                  }
+                }
+              }
+            }
+          }
+
+          // 5) bulkWrite 준비
+          const ops = [];
+
+          // 5-1) 본문 upsert (문서가 없다면 productId와 sku 전체를 한 번에 삽입)
           ops.push({
             updateOne: {
-              filter: { productId },
-              update: { $push: { "sku_info.sku_info_list": { $each: toPush } } },
+              filter: { _id: productId },
+              update: {
+                $set: baseDoc,
+                $setOnInsert: {
+                  productId,
+                  "sku_info.sku_info_list": skusForInsert,
+                },
+              },
+              upsert: true,
             },
           });
-        }
 
-        // 6) 일괄 실행 (유효성 검사는 스키마에 맡기고, 업데이트 검증은 생략)
-        if (ops.length) {
-          await ProductDetail.bulkWrite(ops, {
-            ordered: false,
-            writeConcern: { w: 1 },
+          // 5-2) 금일 첫 sku 업데이트
+          //      (각 SKU당 1개 updateOne, 하지만 네트워크는 bulk로 1회 전송)
+          for (const s of updSkus) {
+            const pricePoint = {
+              price_with_tax: s.price_with_tax,
+              sale_price_with_tax: s.sale_price_with_tax,
+              discount_rate: s.discount_rate ?? 0,
+              currency: s.currency ?? "KRW",
+              collected_at: new Date(),
+            };
+
+            ops.push({
+              updateOne: {
+                filter: {
+                  productId,
+                  "sku_info.sku_info_list.sku_id": s.sku_id,
+                },
+                update: {
+                  $set: {
+                    "sku_info.sku_info_list.$[e].price_with_tax":
+                      s.price_with_tax,
+                    "sku_info.sku_info_list.$[e].sale_price_with_tax":
+                      s.sale_price_with_tax,
+                    "sku_info.sku_info_list.$[e].discount_rate":
+                      s.discount_rate ?? 0,
+                    "sku_info.sku_info_list.$[e].currency": s.currency ?? "KRW",
+                    "sku_info.sku_info_list.$[e].link": s.link,
+                    "sku_info.sku_info_list.$[e].color": s.color ?? "",
+                    "sku_info.sku_info_list.$[e].sku_properties":
+                      s.sku_properties ?? "",
+                    [`sku_info.sku_info_list.$[e].price_by_date.${todayKey}`]:
+                      pricePoint,
+                  },
+                },
+                arrayFilters: [{ "e.sku_id": s.sku_id }],
+              },
+            });
+          }
+          // 5-3) 오늘 최저가 새로 갱신한 sku들을 한 번에 push
+          const safe = (v, d = "") => (v == null ? d : v);
+
+          for (const s of lowPriceUpdSkus) {
+            const sid = Number(s.sku_id);
+            if (!Number.isFinite(sid)) continue;
+
+            const pricePoint = {
+              price_with_tax: Number(s.price_with_tax),
+              sale_price_with_tax: Number(s.sale_price_with_tax),
+              discount_rate: Number(s.discount_rate ?? 0),
+              currency: safe(s.currency, "KRW"),
+              collected_at: new Date(), // 키에 점만 없으면 OK
+            };
+
+            // todayKey는 점(.)이 없어야 함. 필요 시 sanitize
+            // const todayKeySafe = String(todayKey).replace(/\./g, "_");
+
+            ops.push({
+              updateOne: {
+                filter: {
+                  _id: productId, // 스키마 확인!
+                  "sku_info.sku_info_list.sku_id": sid, // 타입 통일
+                },
+                update: {
+                  $set: {
+                    "sku_info.sku_info_list.$[e].price_with_tax":
+                      pricePoint.price_with_tax,
+                    "sku_info.sku_info_list.$[e].sale_price_with_tax":
+                      pricePoint.sale_price_with_tax,
+                    "sku_info.sku_info_list.$[e].discount_rate":
+                      pricePoint.discount_rate,
+                    "sku_info.sku_info_list.$[e].currency": pricePoint.currency,
+                    "sku_info.sku_info_list.$[e].link": safe(s.link, ""),
+                    "sku_info.sku_info_list.$[e].color": safe(s.color, ""),
+                    "sku_info.sku_info_list.$[e].sku_properties": safe(
+                      s.sku_properties,
+                      ""
+                    ),
+                    [`sku_info.sku_info_list.$[e].price_by_date.${todayKey}`]:
+                      pricePoint,
+                  },
+                },
+                arrayFilters: [{ "e.sku_id": sid }], // 타입 통일
+              },
+            });
+          }
+          // 5-4) 새로 발견된 sku들을 한 번에 push
+          if (newSkus.length > 0 && doc) {
+            const toPush = newSkus.map((s) => ({
+              sku_id: s.sku_id,
+              color: s.color ?? "",
+              link: s.link,
+              price_with_tax: s.price_with_tax,
+              sale_price_with_tax: s.sale_price_with_tax,
+              discount_rate: s.discount_rate ?? 0,
+              sku_properties: s.sku_properties ?? "",
+              currency: s.currency ?? "KRW",
+              price_by_date: {
+                [todayKey]: {
+                  price_with_tax: s.price_with_tax,
+                  sale_price_with_tax: s.sale_price_with_tax,
+                  discount_rate: s.discount_rate ?? 0,
+                  currency: s.currency ?? "KRW",
+                  collected_at: new Date(),
+                },
+              },
+            }));
+
+            ops.push({
+              updateOne: {
+                filter: { productId },
+                update: {
+                  $push: { "sku_info.sku_info_list": { $each: toPush } },
+                },
+              },
+            });
+          }
+
+          // 6) 일괄 실행 (유효성 검사는 스키마에 맡기고, 업데이트 검증은 생략)
+
+          if (ops.length) {
+            await ProductDetail.bulkWrite(ops, {
+              ordered: false,
+              writeConcern: { w: 1 },
+            });
+          }
+        } catch (err) {
+          const pid =
+            (err &&
+              typeof err === "object" &&
+              "productId" in err &&
+              err.productId) ||
+            item._id;
+          failedIds.push(pid);
+          console.warn("getSkuDetail 실패", {
+            productId: pid,
+            code: err?.code,
+            sub_code: err?.sub_code,
+            message: err?.message,
           });
         }
-      } catch (err) {
-        const pid =
-          (err && typeof err === "object" && "productId" in err && err.productId) ||
-          item._id;
-        failedIds.push(pid);
-        console.warn("getSkuDetail 실패", {
-          productId: pid,
-          code: err?.code,
-          sub_code: err?.sub_code,
-          message: err?.message,
-        });
-      }
-    })
-  )
-);
+      })
+    )
+  );
 
+  console.log("실패한 상품 IDs:", failedIds);
 
-console.log("실패한 상품 IDs:", failedIds);
-
-process.exit(0)
+  process.exit(0);
   // console.log("uniqueList:", uniqueList);
 })();

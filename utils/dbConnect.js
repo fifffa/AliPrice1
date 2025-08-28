@@ -2,7 +2,7 @@ import mongoose from "mongoose";
 import "dotenv/config";
 
 // const MONGODB_URI = "mongodb://127.0.0.1:27017/AliPrice"; // 로컬
-const MONGODB_URI = process.env.MONGODB_URL; // 로컬
+const MONGODB_URI = process.env.MONGODB_URL; // 원격
 if (!MONGODB_URI) {
   console.error("MONGODB_URI is not defined");
   throw new Error(

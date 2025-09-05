@@ -97,8 +97,6 @@ jobs:
         run: npm ci
 
       # Playwright 브라우저 및 의존 패키지 설치
-      - name: Install Playwright browsers & deps
-        run: npx playwright install --with-deps chromium
 
       - name: Run crawler
         env:

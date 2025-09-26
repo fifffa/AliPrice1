@@ -79,10 +79,12 @@ export async function getSkuDetail(productId) {
       return e;
     }
 
+    console.log("result:", result);
+
     return result;
   } catch (e) {
     console.log("e:", e);
   }
 }
 
-// getSkuDetail(1005007255201531);
+getSkuDetail(1005008995076575);

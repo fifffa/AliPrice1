@@ -186,10 +186,7 @@ async function main() {
 
   const query = {};
   const projection = { "sku_info.sil": 1 };
-  const cursor = ProductDetail.find(
-    { _id: "1005008217692752" },
-    projection
-  ).cursor();
+  const cursor = ProductDetail.find(query, projection).cursor();
 
   let visited = 0;
   let changedDocs = 0;

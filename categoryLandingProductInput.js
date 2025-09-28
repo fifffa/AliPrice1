@@ -110,11 +110,9 @@ async function getServerSideProps(ctx) {
   await dbConnect();
 
   const categoryList = [
-    { categoryName: "전체", categoryId: null },
+    // { categoryName: "전체", categoryId: null },
     { categoryName: "음식", categoryId: "2" },
     { categoryName: "가전제품", categoryId: "6" },
-    { categoryName: "노트북", categoryId: "702" },
-    { categoryName: "데스크톱", categoryId: "701" },
     { categoryName: "태블릿", categoryId: "200001086" },
     { categoryName: "문구", categoryId: "21" },
     { categoryName: "생활용품", categoryId: "13" },
@@ -129,6 +127,11 @@ async function getServerSideProps(ctx) {
     { categoryName: "조명", categoryId: "39" },
   ];
 
+  const allProductPsList = [];
+  const allProductVolList = [];
+  const allProductRnList = [];
+  const allProductOffList = [];
+
   const { start, end, label: range } = getRange(undefined);
 
   // 1) 원문 조회
@@ -142,11 +145,14 @@ async function getServerSideProps(ctx) {
       const extIds = Array.from(
         new Set(
           (categoryList ?? [])
-            .map((v) => Number(v.categoryId))
-            .filter(Boolean)
-            .toString()
+            .map((v) => v?.categoryId) // 먼저 원래 값 유지
+            .filter((v) => v != null) // null, undefined 제거
+            .map(String) // 그 다음 문자열화
         )
       );
+
+      console.log("extIds:", extIds);
+
       objectId = await ProductCategories.find({
         $or: [{ cId: { $in: extIds } }], // ← 필요시 { categoryId: { $in: extIds } }
       }).lean();
@@ -162,21 +168,29 @@ async function getServerSideProps(ctx) {
       );
 
       raw = await ProductDetail.find({
-        $or: [{ cId1: { $in: productExtIds } }], // ← 필요시 { categoryId: { $in: extIds } }
+        $or: [
+          { cId1: { $in: productExtIds } },
+          { cId2: { $in: productExtIds } },
+        ], // ← 필요시 { categoryId: { $in: extIds } }
       }).lean();
+    } else {
+      const catDoc = await ProductCategories.findOne({
+        cId: String(category.categoryId),
+      }).lean();
+      const cid = catDoc?._id?.toString();
 
-      console.log("raw:", raw);
+      raw = await ProductDetail.find({ cId1: cid }).lean();
+
+      console.log("cid", cid);
+      console.log("category", category.categoryId);
+      console.log("raw", raw[0]);
+      if (!raw?.length) raw = await ProductDetail.find({ cId2: cid }).lean();
     }
 
-    // objectId = await ProductCategories.find({ cId: category.categoryId });
-
-    // raw = await ProductDetail.find({ cId1: objectId._id }).limit(1000).lean();
-
-    // if (!raw)
-    //   raw = await ProductDetail.find({ cId2: objectId._id }).limit(1000).lean();
     const allSkus = [];
 
-    // 2) JS 후처리: 현재가=최저가 AND flat 아님 인 SKU만 유지
+    // 평균가대비 최저가 싼 리스트
+
     const offList = raw
       .map((doc) => {
         const sil = doc?.sku_info?.sil || [];
@@ -242,6 +256,8 @@ async function getServerSideProps(ctx) {
       })
       .filter(Boolean);
 
+    // 리뷰 많은 순서 리스트
+
     const rnList = raw
       .map((doc) => {
         const sil = doc?.sku_info?.sil || [];
@@ -270,32 +286,192 @@ async function getServerSideProps(ctx) {
         return {
           _id: doc._id,
           // 필요하면 sku_filtered를 보존:
-          // sku_info: sku_filtered,
+          rn: doc.rn,
         };
       })
       .filter(Boolean);
 
-    const offTop100 = allSkus
-      .sort((a, b) => a.ratio - b.ratio || a.latestSale - b.latestSale)
-      .slice(0, 100);
+    // 판매순 많은 순서 리스트
 
-    console.log("offTop100:", offTop100);
+    const volList = raw
+      .map((doc) => {
+        const sil = doc?.sku_info?.sil || [];
 
-    // const res = await CategoryLandingProduct.updateOne(
-    //   { categoryName: category.categoryName },
-    //   {
-    //     $set: { offList: offTop100 },
-    //     $setOnInsert: { categoryName: category.categoryName }, // 문서 없으면 생성 시 이름도 세팅
-    //   },
-    //   { runValidators: true, upsert: true } // 유효성검사 + 없으면 생성
-    // );
+        const sku_filtered = sil
+          .map((sku) => {
+            const { lowestSale, latestSale, isFlat } = analyzePd(
+              sku?.pd,
+              start,
+              end
+            );
+
+            // 기간 내 포인트 없거나 flat 제거
+            if (lowestSale == null || latestSale == null) return null;
+            if (isFlat) return null;
+
+            // 필요 시 제품 내부용 데이터 유지하려면 리턴 유지
+            return {
+              sId: sku?.sId,
+            };
+          })
+          .filter(Boolean);
+
+        if (sku_filtered.length === 0) return null;
+
+        return {
+          _id: doc._id,
+          // 필요하면 sku_filtered를 보존:
+          vol: doc.vol,
+        };
+      })
+      .filter(Boolean);
+    // 평점 높은 순서 리스트
+
+    const psList = raw
+      .map((doc) => {
+        const sil = doc?.sku_info?.sil || [];
+
+        const sku_filtered = sil
+          .map((sku) => {
+            const { lowestSale, latestSale, isFlat } = analyzePd(
+              sku?.pd,
+              start,
+              end
+            );
+
+            // 기간 내 포인트 없거나 flat 제거
+            if (lowestSale == null || latestSale == null) return null;
+            if (isFlat) return null;
+
+            // 필요 시 제품 내부용 데이터 유지하려면 리턴 유지
+            return {
+              sId: sku?.sId,
+            };
+          })
+          .filter(Boolean);
+
+        if (sku_filtered.length === 0) return null;
+
+        return {
+          _id: doc._id,
+          // 필요하면 sku_filtered를 보존:
+          ps: doc.ps,
+        };
+      })
+      .filter(Boolean);
+
+    const psTop100 = psList
+      .sort((a, b) => b.ps - a.ps)
+      .slice(0, 100)
+      .map((item) => {
+        allProductPsList.push(item);
+        return item._id;
+      });
+    const volTop100 = volList
+      .sort((a, b) => b.vol - a.vol)
+      .slice(0, 100)
+
+      .map((item) => {
+        allProductVolList.push(item);
+
+        return item._id;
+      });
+    const rnTop100 = rnList
+      .sort((a, b) => b.rn - a.rn)
+      .slice(0, 100)
+      .map((item) => {
+        allProductRnList.push(item);
+        return item._id;
+      });
+
+    // 할인탑 100 중복검사 코드
+
+    allProductOffList.push(...allSkus);
+
+    const offTop100 = [];
+    const seen = new Set();
+
+    for (const item of allSkus.sort(
+      (a, b) => a.ratio - b.ratio || a.latestSale - b.latestSale
+    )) {
+      const key = item.productId?.toString?.() ?? String(item.productId); // ObjectId 대비
+      if (!seen.has(key)) {
+        seen.add(key);
+        offTop100.push({ _id: item.productId });
+        if (offTop100.length === 100) break; // 500개 채우면 즉시 종료
+      }
+    }
+
+    allProductOffList.push(...offTop100);
+    allProductRnList.push(...rnTop100);
+    allProductPsList.push(...psTop100);
+    allProductVolList.push(...volTop100);
+
+    // console.log("offTop100:", offTop100);
+
+    const res = await CategoryLandingProduct.updateOne(
+      { categoryName: category.categoryName },
+      {
+        $set: {
+          rnList: rnTop100,
+          volList: volTop100,
+          psList: psTop100,
+          offList: offTop100,
+        },
+        $setOnInsert: { categoryName: category.categoryName }, // 문서 없으면 생성 시 이름도 세팅
+      },
+      { runValidators: true, upsert: true } // 유효성검사 + 없으면 생성
+    );
 
     // console.log("updateOne result:", res); // matchedCount/modifiedCount 확인
 
-    process.exit(1);
-
     // 상품 정렬: 대표 최저가 오름차순 → 리뷰수 rn 내림차순
   }
+
+  const allProductPsTop100 = allProductPsList
+    .sort((a, b) => b.ps - a.ps)
+    .slice(0, 100)
+    .map((item) => item._id);
+  const allProductVolTop100 = allProductVolList
+    .sort((a, b) => b.vol - a.vol)
+    .slice(0, 100)
+    .map((item) => item._id);
+  const allProductRnTop100 = allProductRnList
+    .sort((a, b) => b.rn - a.rn)
+    .slice(0, 100)
+    .map((item) => item._id);
+
+  const allProductOffTop100 = [];
+  const seen = new Set();
+
+  for (const item of allProductOffList.sort(
+    (a, b) => a.ratio - b.ratio || a.latestSale - b.latestSale
+  )) {
+    const key = item.productId?.toString?.() ?? String(item.productId); // ObjectId 대비
+    if (!seen.has(key)) {
+      seen.add(key);
+      allProductOffTop100.push({ _id: item.productId });
+      if (allProductOffTop100.length === 100) break; // 500개 채우면 즉시 종료
+    }
+  }
+
+  const res = await CategoryLandingProduct.updateOne(
+    { categoryName: "전체" },
+    {
+      $set: {
+        rnList: allProductRnTop100,
+        volList: allProductVolTop100,
+        psList: allProductPsTop100,
+        offList: allProductOffTop100,
+      },
+      $setOnInsert: { categoryName: "전체" }, // 문서 없으면 생성 시 이름도 세팅
+    },
+    { runValidators: true, upsert: true } // 유효성검사 + 없으면 생성
+  );
+
+  console.log("all", allProductOffTop100);
+
+  process.exit(0);
 }
 
 async function test() {

@@ -440,22 +440,30 @@ async function fetchByCategory({ categoryId }) {
         console.log(raw?.error_response ?? raw);
       }
 
-      return [...items, ...res];
+      return { item: [...items], dataBaseRes: [...res] };
     })
   );
 
-  // 모든 태스크 실행
-  const productIdList = (await Promise.all(listTasks)).flat();
-  const uniqueList = [
+  // 데이터베이스에 있는건 volume 200 안넘어도 업데이트
+
+  const ProductIdList = await Promise.all(listTasks);
+
+  const d = [
     ...new Map(
-      productIdList
-        .filter((item) => item.volume >= 200) // 🔹 volume 조건(외부 데이터 키가 volume이면 유지)
-        .map((item) => {
-          console.log("item._id:", item._id);
-          return [item._id, item];
+      ProductIdList[0].item
+        .filter((product) => product.volume >= 200) // 🔹 volume 조건(외부 데이터 키가 volume이면 유지)
+        .map((product) => {
+          // console.log("item._id:", item._id);
+          return [product._id, product];
         })
     ).values(),
   ];
+
+  const uniqueList = [...d, ProductIdList[0].dataBaseRes].flat();
+
+  console.log("uniqueList:", uniqueList);
+
+  //
 
   const failedIds = [];
 

@@ -1,6 +1,16 @@
 import mongoose from "mongoose";
 import ProductDetail from "./ProductDetail.js";
 
+const OffItemSchema = new mongoose.Schema(
+  {
+    product: { type: String, ref: "ProductDetail", required: true }, // populate용
+    sId: { type: String }, // 외부 상품ID를 함께 둘 수도
+    c: { type: String }, // 예: 색상/코드
+    sp: { type: String }, // JSON 문자열이 아니라 "객체/배열"로 저장 추천
+  },
+  { _id: false }
+);
+
 const CategoryLandingProductSchema = new mongoose.Schema(
   {
     categoryName: String,
@@ -12,22 +22,17 @@ const CategoryLandingProductSchema = new mongoose.Schema(
     ],
     volList: [
       {
-        type: mongoose.Schema.Types.ObjectId,
+        type: String,
         ref: "ProductDetail",
       },
     ],
     psList: [
       {
-        type: mongoose.Schema.Types.ObjectId,
+        type: String,
         ref: "ProductDetail",
       },
     ],
-    offList: [
-      {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "ProductDetail",
-      },
-    ],
+    offList: [OffItemSchema],
   },
   { versionKey: false }
 );

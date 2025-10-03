@@ -114,17 +114,17 @@ async function getServerSideProps(ctx) {
     { categoryName: "음식", categoryId: "2" },
     { categoryName: "가전제품", categoryId: "6" },
     { categoryName: "태블릿", categoryId: "200001086" },
-    { categoryName: "문구", categoryId: "21" },
-    { categoryName: "생활용품", categoryId: "13" },
-    { categoryName: "주방용품", categoryId: "200000920" },
-    { categoryName: "남성의류", categoryId: "200000343" },
-    { categoryName: "여성의류", categoryId: "200000345" },
-    { categoryName: "신발", categoryId: "322" },
-    { categoryName: "스포츠", categoryId: "18" },
-    { categoryName: "완구/취미", categoryId: "26" },
-    { categoryName: "자동차용품", categoryId: "34" },
-    { categoryName: "안전/보안", categoryId: "30" },
-    { categoryName: "조명", categoryId: "39" },
+    // { categoryName: "문구", categoryId: "21" },
+    // { categoryName: "생활용품", categoryId: "13" },
+    // { categoryName: "주방용품", categoryId: "200000920" },
+    // { categoryName: "남성의류", categoryId: "200000343" },
+    // { categoryName: "여성의류", categoryId: "200000345" },
+    // { categoryName: "신발", categoryId: "322" },
+    // { categoryName: "스포츠", categoryId: "18" },
+    // { categoryName: "완구/취미", categoryId: "26" },
+    // { categoryName: "자동차용품", categoryId: "34" },
+    // { categoryName: "안전/보안", categoryId: "30" },
+    // { categoryName: "조명", categoryId: "39" },
   ];
 
   const allProductPsList = [];
@@ -139,53 +139,14 @@ async function getServerSideProps(ctx) {
   for (let category of categoryList) {
     let raw;
 
-    let objectId;
+    const catDoc = await ProductCategories.findOne({
+      cId: String(category.categoryId),
+    }).lean();
+    const cid = catDoc?._id?.toString();
 
-    if (category.categoryName === "전체") {
-      const extIds = Array.from(
-        new Set(
-          (categoryList ?? [])
-            .map((v) => v?.categoryId) // 먼저 원래 값 유지
-            .filter((v) => v != null) // null, undefined 제거
-            .map(String) // 그 다음 문자열화
-        )
-      );
+    raw = await ProductDetail.find({ cId1: cid }).lean();
 
-      console.log("extIds:", extIds);
-
-      objectId = await ProductCategories.find({
-        $or: [{ cId: { $in: extIds } }], // ← 필요시 { categoryId: { $in: extIds } }
-      }).lean();
-
-      console.log("objectId:", objectId);
-
-      const productExtIds = Array.from(
-        new Set(
-          (objectId ?? [])
-            .map((v) => v?._id?.toHexString?.() ?? String(v?._id)) // ObjectId → hex, 이미 string이면 그대로
-            .filter(Boolean)
-        )
-      );
-
-      raw = await ProductDetail.find({
-        $or: [
-          { cId1: { $in: productExtIds } },
-          { cId2: { $in: productExtIds } },
-        ], // ← 필요시 { categoryId: { $in: extIds } }
-      }).lean();
-    } else {
-      const catDoc = await ProductCategories.findOne({
-        cId: String(category.categoryId),
-      }).lean();
-      const cid = catDoc?._id?.toString();
-
-      raw = await ProductDetail.find({ cId1: cid }).lean();
-
-      console.log("cid", cid);
-      console.log("category", category.categoryId);
-      console.log("raw", raw[0]);
-      if (!raw?.length) raw = await ProductDetail.find({ cId2: cid }).lean();
-    }
+    if (!raw?.length) raw = await ProductDetail.find({ cId2: cid }).lean();
 
     const allSkus = [];
 
@@ -203,6 +164,8 @@ async function getServerSideProps(ctx) {
               end
             );
 
+            if (!doc._id) return null;
+
             // 기간 내 포인트 없거나 flat 제거
             if (lowestSale == null || latestSale == null) return null;
             if (isFlat) return null;
@@ -218,9 +181,12 @@ async function getServerSideProps(ctx) {
             const latest = Number(latestSale);
             const ratio = latest / avgSale; // 낮을수록 "평균 대비 현재가"가 저렴
 
+            // console.log("doc:", doc);
+
             // 상위 랭킹용 풀 컬렉션에 적재
             allSkus.push({
-              productId: String(doc._id),
+              pid: String(doc._id),
+              _id: String(doc._id),
               sId: sku?.sId,
               link: sku?.link,
               c: sku?.c,
@@ -233,6 +199,8 @@ async function getServerSideProps(ctx) {
 
             // 필요 시 제품 내부용 데이터 유지하려면 리턴 유지
             return {
+              pid: String(doc._id),
+              _id: String(doc._id),
               sId: sku?.sId,
               link: sku?.link,
               c: sku?.c,
@@ -381,6 +349,7 @@ async function getServerSideProps(ctx) {
       .slice(0, 100)
       .map((item) => {
         allProductRnList.push(item);
+        // console.log("item:", item);
         return item._id;
       });
 
@@ -394,12 +363,24 @@ async function getServerSideProps(ctx) {
     for (const item of allSkus.sort(
       (a, b) => a.ratio - b.ratio || a.latestSale - b.latestSale
     )) {
-      const key = item.productId?.toString?.() ?? String(item.productId); // ObjectId 대비
-      if (!seen.has(key)) {
-        seen.add(key);
-        offTop100.push({ _id: item.productId });
-        if (offTop100.length === 100) break; // 500개 채우면 즉시 종료
-      }
+      // 1) 저장에 쓸 product 확정(옵션 B: ProductDetail의 _id가 오길 기대)
+      const product = item.productId ?? item._id ?? item.pid;
+      if (!product) continue; // 필수값 없으면 스킵
+
+      // 2) 동일 기준으로 중복 체크(문자열화 통일)
+      const key =
+        product?.toHexString?.() ?? product?.toString?.() ?? String(product);
+      if (seen.has(key)) continue;
+      seen.add(key);
+
+      offTop100.push({
+        product, // ← 중복키와 동일한 값으로 저장
+        sId: item.sId ?? null,
+        c: item.c ?? null,
+        sp: item.sp,
+      });
+
+      if (offTop100.length === 100) break; // 100개에서 종료
     }
 
     allProductOffList.push(...offTop100);
@@ -407,7 +388,7 @@ async function getServerSideProps(ctx) {
     allProductPsList.push(...psTop100);
     allProductVolList.push(...volTop100);
 
-    // console.log("offTop100:", offTop100);
+    console.log("offTop100:", offTop100);
 
     const res = await CategoryLandingProduct.updateOne(
       { categoryName: category.categoryName },
@@ -447,12 +428,25 @@ async function getServerSideProps(ctx) {
   for (const item of allProductOffList.sort(
     (a, b) => a.ratio - b.ratio || a.latestSale - b.latestSale
   )) {
-    const key = item.productId?.toString?.() ?? String(item.productId); // ObjectId 대비
-    if (!seen.has(key)) {
-      seen.add(key);
-      allProductOffTop100.push({ _id: item.productId });
-      if (allProductOffTop100.length === 100) break; // 500개 채우면 즉시 종료
-    }
+    // 1) 저장에 쓸 product 확정
+    const product = item.productId ?? item._id ?? item.pid;
+    if (!product) continue;
+
+    // 2) 동일 기준으로 중복 체크
+    const key =
+      product?.toHexString?.() ?? product?.toString?.() ?? String(product);
+    if (seen.has(key)) continue;
+    seen.add(key);
+
+    // 4) 결과 푸시(옵션 B 스키마에 바로 맞는 형태)
+    allProductOffTop100.push({
+      product, // ← offList[].product에 그대로 사용
+      c: item.c ?? null,
+      sp: item.sp,
+      sId: item.sId ?? null,
+    });
+
+    if (allProductOffTop100.length === 100) break;
   }
 
   const res = await CategoryLandingProduct.updateOne(
@@ -468,8 +462,6 @@ async function getServerSideProps(ctx) {
     },
     { runValidators: true, upsert: true } // 유효성검사 + 없으면 생성
   );
-
-  console.log("all", allProductOffTop100);
 
   process.exit(0);
 }

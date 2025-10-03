@@ -1,8 +1,9 @@
 import crypto from "crypto";
 import "dotenv/config";
+import { translateSkuPropertiesSimple } from "./utils/skuTranslate.js";
+
 const API = "https://api-sg.aliexpress.com/sync";
 const METHOD = "aliexpress.affiliate.product.sku.detail.get";
-
 const APP_KEY = process.env.AE_APP_KEY;
 const APP_SECRET = process.env.AE_APP_SECRET;
 const TRACKING_ID = process.env.AE_TRACKING_ID;
@@ -79,7 +80,26 @@ export async function getSkuDetail(productId) {
       return e;
     }
 
-    console.log("result:", result);
+    const list = Array.isArray(result?.ae_item_sku_info?.traffic_sku_info_list)
+      ? result.ae_item_sku_info.traffic_sku_info_list
+      : [];
+
+    // 각 item.sku_properties만 변환
+    const translatedList = list.map((item) => ({
+      ...item,
+      sku_properties: translateSkuPropertiesSimple(item.sku_properties),
+    }));
+
+    // 원래 구조에 다시 꽂기(불변 업데이트)
+    const newResult = {
+      ...result,
+      ae_item_sku_info: {
+        ...result.ae_item_sku_info,
+        traffic_sku_info_list: translatedList,
+      },
+    };
+
+    console.log("newResult:", newResult.ae_item_sku_info.traffic_sku_info_list);
 
     return result;
   } catch (e) {
@@ -87,4 +107,4 @@ export async function getSkuDetail(productId) {
   }
 }
 
-getSkuDetail(1005008995076575);
+getSkuDetail(1005009069658977);

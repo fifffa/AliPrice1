@@ -308,7 +308,7 @@ async function fetchByCategory({ categoryId }) {
       tracking_id: TRACKING_ID,
       page_no: pageNo,
       page_size: pageSize,
-      target_language: "ko",
+      target_language: "EN",
       target_currency: "KRW",
       ship_to_country: "KR",
       // country: "KR", // 필요 시만 사용
@@ -402,7 +402,7 @@ async function fetchByCategory({ categoryId }) {
 
   //
 
-  const listTasks = divided[0].map((item) =>
+  const listTasks = divided[9].map((item) =>
     limit(async () => {
       const cat = await ProductCategories.findOne({
         cId: String(item.cId),

@@ -139,7 +139,7 @@ if (isDirect) {
   (async () => {
     // CLI 인자에서 상품ID 받기: node fetchByProductId.js 1005007856343236 4000669887458
     const cliIds = process.argv.slice(2);
-    const ids = cliIds.length ? cliIds : ["1005007384675441"]; // 없으면 예시 값
+    const ids = cliIds.length ? cliIds : ["1005008412177100"]; // 없으면 예시 값
 
     console.log("실행 파일:", process.argv[1]);
     console.log("모듈 파일:", fileURLToPath(import.meta.url));

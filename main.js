@@ -308,7 +308,7 @@ async function fetchByCategory({ categoryId }) {
       tracking_id: TRACKING_ID,
       page_no: pageNo,
       page_size: pageSize,
-      target_language: "EN",
+      target_language: "KO",
       target_currency: "KRW",
       ship_to_country: "KR",
       // country: "KR", // 필요 시만 사용
@@ -402,7 +402,7 @@ async function fetchByCategory({ categoryId }) {
 
   //
 
-  const listTasks = divided[9].map((item) =>
+  const listTasks = divided[0].slice(0, 5).map((item) =>
     limit(async () => {
       const cat = await ProductCategories.findOne({
         cId: String(item.cId),
@@ -434,13 +434,16 @@ async function fetchByCategory({ categoryId }) {
 
       // console.log("items:", items);
 
-      if (items.length) {
-        console.log(items.slice(0, 5));
-      } else {
-        console.log(raw?.error_response ?? raw);
-      }
+      // if (items.length) {
+      //   console.log(items.slice(0, 5));
+      // } else {
+      //   console.log(raw?.error_response ?? raw);
+      // }
 
-      return { item: [...items], dataBaseRes: [...res] };
+      return {
+        item: [...items],
+        dataBaseRes: [...res],
+      };
     })
   );
 
@@ -459,11 +462,25 @@ async function fetchByCategory({ categoryId }) {
     ).values(),
   ];
 
-  const uniqueList = [...d, ProductIdList[0].dataBaseRes].flat();
+  // console.log("d:", d);
 
-  console.log("uniqueList:", uniqueList);
+  // ----------------중복검사---------------
 
-  //
+  const getId = (p) => String(p?._id ?? p?.id ?? p?.product_id ?? "");
+  const dbRes = ProductIdList[0]?.dataBaseRes ?? [];
+  const ext = d ?? []; // 외부 아이템(볼륨 필터 적용된)
+
+  // 1) null/undefined 제거
+  const merged = [...ext, ...dbRes].filter((p) => p && getId(p));
+
+  // 2) id 기준 Map으로 dedupe (뒤에 있는 DB가 앞의 외부를 덮어씀)
+  const uniqueList = Array.from(
+    new Map(merged.map((p) => [getId(p), p])).values()
+  );
+
+  // console.log("uniqueList:", uniqueList);
+
+  // ------------------------------
 
   const failedIds = [];
 
@@ -478,7 +495,7 @@ async function fetchByCategory({ categoryId }) {
             max: 10000,
           });
 
-          // console.log("info:", info);
+          console.log("skuData:", skuData);
 
           const info = skuData?.ae_item_info ?? {};
           const sku = skuData?.ae_item_sku_info ?? {};
@@ -499,22 +516,72 @@ async function fetchByCategory({ categoryId }) {
           const todayKey = dateKeyKST(); // "YYYY-MM-DD" (KST)
 
           // 2) 본문(upsert) 베이스
-          const baseDoc = {
-            vol: item.volume ?? 0,
-            ol: info.original_link ?? "",
-            pl: item.promotion_link ?? "",
 
-            // ref 필드에는 반드시 _id(ObjectId)만
-            cId1: cId1, // 없으면 undefined → $set에서 무시됨
-            cId2: cId2,
+          const baseDoc = {};
 
-            tt: info.title ?? "",
-            st: info.store_name ?? "",
-            ps: info.product_score ?? 0,
-            rn: info.review_number ?? 0,
-            il: info.image_link ?? "",
-            ail: info.additional_image_links?.string ?? [],
-          };
+          // console.log("item:", item);
+
+          if (item.volume && Number(item.volume) !== 0) {
+            baseDoc.volume = item.volume;
+          }
+
+          if (
+            info.original_link &&
+            stripForCompare(info.original_link) !== ""
+          ) {
+            baseDoc.original_link = info.original_link;
+          }
+
+          if (
+            item.promotion_link &&
+            stripForCompare(item.promotion_link) !== ""
+          ) {
+            baseDoc.promotion_link = item.promotion_link;
+          }
+          if (cId1) {
+            baseDoc.cId1 = cId1;
+          }
+          if (cId2) {
+            baseDoc.cId2 = cId2;
+          }
+          if (info.title && stripForCompare(info.title) !== "") {
+            baseDoc.tt = info.title;
+          }
+          if (info.store_name && stripForCompare(info.store_name) !== "") {
+            baseDoc.st = info.store_name;
+          }
+          if (info.product_score && Number(info.product_score) !== 0) {
+            baseDoc.ps = info.product_score;
+          }
+          if (info.review_number && Number(info.review_number) !== 0) {
+            baseDoc.rn = info.review_number;
+          }
+          if (info.image_link && stripForCompare(info.image_link) !== "") {
+            baseDoc.il = info.image_link;
+          }
+          if (
+            info.additional_image_links?.string &&
+            info.additional_image_links?.string.length >= 1
+          ) {
+            baseDoc.ail = info.additional_image_links?.string;
+          }
+
+          // const baseDoc = {
+          //   vol: item.volume ?? 0,
+          //   ol: info.original_link ?? "",
+          //   pl: item.promotion_link ?? "",
+
+          //   // ref 필드에는 반드시 _id(ObjectId)만
+          //   cId1: cId1, // 없으면 undefined → $set에서 무시됨
+          //   cId2: cId2,
+
+          //   tt: info.title ?? "",
+          //   st: info.store_name ?? "",
+          //   ps: info.product_score ?? 0,
+          //   rn: info.review_number ?? 0,
+          //   il: info.image_link ?? "",
+          //   ail: info.additional_image_links?.string ?? [],
+          // };
 
           // 3) 최초 생성 시에만 넣을 SKU 전체(오늘 포인트 포함) — 임베디드 구조
           const skusForInsert = skuList.map((s) => {

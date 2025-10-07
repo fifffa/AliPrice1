@@ -51,6 +51,7 @@ export async function getSkuDetail(productId) {
       target_currency: "KRW",
       target_language: "KO",
       ship_to_country: "KR",
+      fields: "product_id",
     };
 
     // 서명
@@ -99,7 +100,7 @@ export async function getSkuDetail(productId) {
       },
     };
 
-    console.log("newResult:", newResult.ae_item_sku_info.traffic_sku_info_list);
+    console.log("newResult:", result);
 
     return result;
   } catch (e) {
@@ -107,4 +108,4 @@ export async function getSkuDetail(productId) {
   }
 }
 
-getSkuDetail(1005009069658977);
+getSkuDetail(1005007528780320);

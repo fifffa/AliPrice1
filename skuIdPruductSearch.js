@@ -100,8 +100,6 @@ export async function getSkuDetail(productId) {
       },
     };
 
-    console.log("newResult:", result);
-
     return result;
   } catch (e) {
     console.log("e:", e);

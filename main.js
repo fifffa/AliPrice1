@@ -413,7 +413,7 @@ async function fetchByCategory({ categoryId }) {
 
   const listTasks = { item: [], dataBaseRes: [] };
 
-  const categoryRes = divided[1].map((item) =>
+  const categoryRes = divided[0].map((item) =>
     limit(async () => {
       const cat = await ProductCategories.findOne({
         cId: String(item.cId),

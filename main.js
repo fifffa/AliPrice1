@@ -395,12 +395,12 @@ async function fetchByCategory({ categoryId }) {
   const productCategories = await ProductCategories.find();
   const total = productCategories.length;
   const baseSize = Math.floor(total / 13); // 기본 크기
-  let remainder = total % 10; // 남는 개수
+  let remainder = total % 13; // 남는 개수
 
   const divided = [];
   let start = 0;
 
-  for (let i = 0; i < 10; i++) {
+  for (let i = 0; i < 13; i++) {
     // 나머지가 남아있으면 이 그룹은 +1개 더 받음
     const extra = remainder > 0 ? 1 : 0;
     const end = start + baseSize + extra;

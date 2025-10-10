@@ -484,11 +484,11 @@ async function fetchByCategory({ categoryId }) {
   const dbs = listTasks.dataBaseRes ?? [];
 
   const merged = [
-    ...dbs, // DB 먼저
     ...items, // item 뒤 (우선권)
+    ...dbs, // DB 먼저
   ];
 
-  console.log("items:", items.length);
+  console.log("items:", items);
   console.log("dbs:", dbs.length);
   console.log("merged:", merged.length);
 
@@ -560,25 +560,28 @@ async function fetchByCategory({ categoryId }) {
           const baseDoc = {};
 
           // console.log("item:", item);
+          // console.log("volume:", volume);
+          // console.log("item.volume:", item.volume);
+          // console.log("item._id:", item._id);
 
           if (Number(volume) > 0) {
-            baseDoc.volume = volume;
+            baseDoc.vol = volume;
           } else if (item.volume && Number(item.volume) !== 0) {
-            baseDoc.volume = item.volume;
+            baseDoc.vol = item.volume;
           }
 
           if (
             info.original_link &&
             stripForCompare(info.original_link) !== ""
           ) {
-            baseDoc.original_link = info.original_link;
+            baseDoc.ol = info.original_link;
           }
 
           if (
             item.promotion_link &&
             stripForCompare(item.promotion_link) !== ""
           ) {
-            baseDoc.promotion_link = item.promotion_link;
+            baseDoc.pl = item.promotion_link;
           }
           if (cId1) {
             baseDoc.cId1 = cId1;

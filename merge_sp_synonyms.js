@@ -3,6 +3,10 @@ import mongoose from "mongoose";
 import dbConnect from "./utils/dbConnect.js";
 import ProductDetail from "./models/ProductDetail.js";
 import { translateSkuPropertiesSimple } from "./utils/skuTranslate.js";
+import {
+  normalizeCForCompare,
+  normalizeSpForCompare,
+} from "./utils/normalize.js";
 
 dotenv.config();
 
@@ -21,48 +25,100 @@ const limit = (() => {
 const USE_SYNONYM_MAP = true;
 const SYNONYM_KEY_MAP = { 색깔: "색상" };
 
+const _SP_MAP = { 색깔: "색상" }; // 라벨 동의어
+
 // ─────────────────────────────────────────────────────────────────────────────
-// 비교용 정규화: 지정 특수문자 + 공백 제거
-function stripForCompare(s) {
-  const a = String(s ?? "").replace(/[{}\[\]\(\)\"\s]/g, "");
-  const trans = translateSkuPropertiesSimple(a);
-  console.log("trans:", trans);
-  return trans;
+// 얕은 정렬: 1-depth 객체의 키만 정렬
+
+// 한국어 Collator: 대소문/자모 분해 차이 최소화
+const koCollator = new Intl.Collator("ko", {
+  sensitivity: "base", // ㅂ vs ㅃ처럼 미세한 차이는 무시
+  ignorePunctuation: false,
+  numeric: true, // "키2" < "키10" 같은 숫자 인식 정렬
+});
+
+// 키 문자열을 NFC로 표준화 (동일 글자 다른 조합을 통일)
+function normKey(k) {
+  return String(k).normalize("NFC");
 }
 
-// c 필드 비교용 정규화
-function normalizeCForCompare(c) {
-  return stripForCompare(c);
+// 얕은 정렬
+function sortObjectKeysKo(obj) {
+  return Object.fromEntries(
+    Object.entries(obj)
+      .map(([k, v]) => [normKey(k), v])
+      .sort(([a], [b]) => koCollator.compare(a, b))
+  );
 }
 
-// sp 비교용 정규화
-function normalizeSpForCompare(spStr) {
-  if (typeof spStr !== "string") return stripForCompare(spStr);
-  // 1) JSON 파싱 시도
-  try {
-    const trans = stripForCompare(spStr);
-    let arr = JSON.parse(trans);
-    if (!Array.isArray(arr)) arr = [arr];
-    // 2) 동의어 키 매핑 (선택)
-    const mapped = arr.map((obj) => {
-      const out = {};
-      for (const [k, v] of Object.entries(obj || {})) {
-        const nk = USE_SYNONYM_MAP ? SYNONYM_KEY_MAP[k] || k : k;
-        out[nk] = v;
-      }
-      // 키 정렬로 직렬화 안정화
-      return Object.fromEntries(
-        Object.entries(out).sort(([a], [b]) => (a > b ? 1 : -1))
-      );
-    });
-    // 3) 안정적 직렬화 후 strip
-    const stable = JSON.stringify(mapped);
-    return stripForCompare(stable);
-  } catch {
-    // 파싱 불가 → 그냥 strip 규칙만 적용
-    return stripForCompare(spStr);
-  }
-}
+// function deepSortObjectKeysKo(input) {
+//   if (Array.isArray(input)) return input.map(deepSortObjectKeysKo);
+//   if (input && typeof input === "object") {
+//     const sorted = Object.entries(input)
+//       .map(([k, v]) => [normKey(k), deepSortObjectKeysKo(v)])
+//       .sort(([a], [b]) => koCollator.compare(a, b));
+//     return Object.fromEntries(sorted);
+//   }
+//   return input;
+// }
+
+// function sortArrayOfObjectsStable(arr) {
+//   return arr
+//     .map((o) => deepSortObjectKeysKo(o))
+//     .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
+// }
+
+// function stripMinimal(s) {
+//   return String(s ?? "").replace(/[{}\[\]\(\)\"\s]/g, "");
+// }
+
+// // 비교용 정규화: 지정 특수문자 + 공백 제거
+// function stripForCompare(s) {
+//   const raw = String(s ?? "");
+//   const translated = translateSkuPropertiesSimple(raw); // ← 먼저 치환
+
+//   // 치환 결과가 JSON이면 정렬/직렬화 후 strip, 아니면 문자열 strip
+//   if (typeof translated === "string") {
+//     try {
+//       const parsed = JSON.parse(translated);
+//       const arr = Array.isArray(parsed) ? parsed : [parsed];
+//       const sortedArr = sortArrayOfObjectsStable(arr);
+//       return stripMinimal(JSON.stringify(sortedArr));
+//     } catch {
+//       return stripMinimal(translated);
+//     }
+//   } else if (translated && typeof translated === "object") {
+//     const arr = Array.isArray(translated) ? translated : [translated];
+//     const sortedArr = sortArrayOfObjectsStable(arr);
+//     return stripMinimal(JSON.stringify(sortedArr));
+//   }
+//   return stripMinimal(translated);
+// }
+
+// // 3) c / sp 정규화
+
+// // c 필드 비교용 정규화
+// export function normalizeCForCompare(c) {
+//   return stripForCompare(c);
+// }
+
+// // sp 비교용 정규화
+// export function normalizeSpForCompare(spStr) {
+//   // 1) JSON 파싱 시도
+//   try {
+//     let arr = JSON.parse(spStr);
+//     if (!Array.isArray(arr)) arr = [arr];
+
+//     const trans = stripForCompare(spStr);
+
+//     // 3) 안정적 직렬화 후 strip
+//     const stable = JSON.stringify(trans);
+//     return stripForCompare(stable);
+//   } catch {
+//     // 파싱 불가 → 그냥 strip 규칙만 적용
+//     return stripForCompare(spStr);
+//   }
+// }
 
 // 원본 보존 + 보기 좋은 sp 선택: "색상" 표기 선호, 없으면 첫 번째
 function pickSurvivor(items) {
@@ -125,9 +181,9 @@ async function processOneDoc(doc) {
     if (!sid) continue; // sId 없는 비정상은 병합 대상 제외
     const cNorm = normalizeCForCompare(it?.c ?? "");
     const spNorm = normalizeSpForCompare(it?.sp ?? "");
-    console.log("cNorm:", cNorm);
     console.log("spNorm:", spNorm);
-    const key = `${sid}||${cNorm}||${spNorm}`;
+    const key = `${String(sid)}||${String(cNorm)}||${String(spNorm)}`;
+
     if (!buckets.has(key)) buckets.set(key, []);
     buckets.get(key).push(it);
   }
@@ -180,13 +236,13 @@ async function processOneDoc(doc) {
   };
 }
 
-async function main() {
+async function main1() {
   await dbConnect();
   console.log(
     `🚀 Bulk merge by (sId,c,sp) 시작 (dry-run: ${dryRun ? "YES" : "NO"})`
   );
 
-  const query = { _id: "1005008077615451" };
+  const query = { _id: "1005007288239328" };
   const projection = { "sku_info.sil": 1 };
   const cursor = ProductDetail.find(query, projection).cursor();
 
@@ -198,6 +254,7 @@ async function main() {
 
   for await (const doc of cursor) {
     visited++;
+    console.log("id:", doc._id);
     const { changed, before, after, metrics } = await processOneDoc(doc);
     if (changed) {
       changedDocs++;
@@ -223,7 +280,7 @@ async function main() {
   await mongoose.connection.close();
 }
 
-main().catch((e) => {
+main1().catch((e) => {
   console.error(e);
   process.exit(1);
 });

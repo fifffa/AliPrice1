@@ -97,20 +97,21 @@ const SkuInfoSchema = new mongoose.Schema(
       type: [SkuInfoItemSchema],
       alias: "sku_info_list",
       default: [],
-      validate: {
-        validator(arr) {
-          const keys = (arr || [])
-            .filter((x) => x && x.sId != null)
-            .map((x) => `${x.sId}||${_normC(x.c)}||${_normSp(x.sp)}`);
-          return keys.length === new Set(keys).size;
-        },
-        message: "sku_info_list 중 (sId,c,sp) 조합이 중복되었습니다.",
-      },
+      // validate: {
+      //   validator(arr) {
+      //     const keys = (arr || [])
+      //       .filter((x) => x && x.sId != null)
+      //       .map((x) => `${x.sId}||${_normC(x.c)}||${_normSp(x.sp)}`);
+      //     return keys.length === new Set(keys).size;
+      //   },
+      //   message: "sku_info_list 중 (sId,c,sp) 조합이 중복되었습니다.",
+      // },
     },
   },
   { _id: false, toJSON: { virtuals: true }, toObject: { virtuals: true } }
 );
-
+// normalizeCForCompare;
+// normalizeSpForCompare;
 // ─────────────────────────────────────────────────────────────────────────────
 // 상품 1문서 = 1상품
 const ProductDetailSchema = new mongoose.Schema(

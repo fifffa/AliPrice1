@@ -126,7 +126,6 @@ const ProductDetailSchema = new mongoose.Schema(
       min: 0,
     },
 
-    ol: { type: String, required: true, alias: "original_link" },
     pl: { type: String, required: true, alias: "promotion_link" },
 
     // 카테고리는 기존 키명을 유지(외부 의존 코드 최소화)

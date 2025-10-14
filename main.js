@@ -13,7 +13,16 @@ import { assert } from "console";
 // import ProductCategories from "./models/ProductCategories.js";
 import ProductCategories from "./models/ProductCategories.js";
 import { getProductDetailsById } from "./getProductDetailById.js";
-import { translateSkuPropertiesSimple } from "./utils/skuTranslate.js";
+import {
+  translateSkuPropertiesSimple,
+  VALUE_MAP,
+} from "./utils/skuTranslate.js";
+import {
+  normalizeCForCompare,
+  normalizeSpForCompare,
+  stripForCompare,
+} from "./utils/normalize.js";
+
 const API = "https://api-sg.aliexpress.com/sync";
 const METHOD = "aliexpress.affiliate.product.query";
 
@@ -94,33 +103,6 @@ function stripMinimal(s) {
 //   return String(s ?? "").replace(/[{}\[\]\(\)\"\s]/g, "");
 // }
 
-function stripForCompare(s) {
-  const raw = String(s ?? "");
-  const translated = translateSkuPropertiesSimple(raw); // ← 먼저 치환
-
-  // 치환 결과가 JSON이면 정렬/직렬화 후 strip, 아니면 문자열 strip
-  if (typeof translated === "string") {
-    try {
-      const parsed = JSON.parse(translated);
-      const arr = Array.isArray(parsed) ? parsed : [parsed];
-      const sortedArr = sortArrayOfObjectsStable(arr);
-      return stripMinimal(JSON.stringify(sortedArr));
-    } catch {
-      return stripMinimal(translated);
-    }
-  } else if (translated && typeof translated === "object") {
-    const arr = Array.isArray(translated) ? translated : [translated];
-    const sortedArr = sortArrayOfObjectsStable(arr);
-    return stripMinimal(JSON.stringify(sortedArr));
-  }
-  return stripMinimal(translated);
-}
-
-// c 필드 비교용 정규화
-function normalizeCForCompare(c) {
-  return stripForCompare(c);
-}
-
 // sp 비교용 정규화
 // function normalizeSpForCompare(spStr) {
 //   if (typeof spStr !== "string") return stripForCompare(spStr);
@@ -150,22 +132,22 @@ function normalizeCForCompare(c) {
 // }
 
 // sp 비교용 정규화
-export function normalizeSpForCompare(spStr) {
-  // 1) JSON 파싱 시도
-  try {
-    let arr = JSON.parse(spStr);
-    if (!Array.isArray(arr)) arr = [arr];
+// export function normalizeSpForCompare(spStr) {
+//   // 1) JSON 파싱 시도
+//   try {
+//     let arr = JSON.parse(spStr);
+//     if (!Array.isArray(arr)) arr = [arr];
 
-    const trans = stripForCompare(spStr);
+//     const trans = stripForCompare(spStr);
 
-    // 3) 안정적 직렬화 후 strip
-    const stable = JSON.stringify(trans);
-    return stripForCompare(stable);
-  } catch {
-    // 파싱 불가 → 그냥 strip 규칙만 적용
-    return stripForCompare(spStr);
-  }
-}
+//     // 3) 안정적 직렬화 후 strip
+//     const stable = JSON.stringify(trans);
+//     return stripForCompare(stable);
+//   } catch {
+//     // 파싱 불가 → 그냥 strip 규칙만 적용
+//     return stripForCompare(spStr);
+//   }
+// }
 
 const parseSkuProps = (val) => {
   if (!val) return [];
@@ -196,15 +178,17 @@ const canonSkuProps = (arr) => {
   if (isEmptyProps(a)) return "";
 
   const canonArr = a.map((obj) => {
-    // 1) 키/값 정규화 + 동의어 치환
+    // 1) 키/값 정규화 + 동의어 치환 (키/값 모두 KEY_SYNONYM 사용)
     const pairs = [];
     for (const [k, v] of Object.entries(obj || {})) {
       const kNorm = norm(k);
-      // 원본 키와 정규화된 키 모두에 대해 치환 시도
-      const mapped = KEY_SYNONYM[k] ?? KEY_SYNONYM[kNorm] ?? kNorm;
+      const kMapped = VALUE_MAP[k] ?? VALUE_MAP[kNorm] ?? kNorm;
 
-      const vNorm = norm(String(v));
-      pairs.push([mapped, vNorm]);
+      const vRaw = String(v).trim();
+      const vNorm = norm(vRaw);
+      const vMapped = VALUE_MAP[vRaw] ?? VALUE_MAP[vNorm] ?? vNorm;
+
+      pairs.push([kMapped, vMapped]);
     }
 
     // 2) 키 정렬(직렬화 안정화)
@@ -471,7 +455,7 @@ async function fetchByCategory({ categoryId }) {
 (async () => {
   await dbConnect();
 
-  // 정확히 10등분하기
+  // 정확히 14등분하기
 
   const productCategories = await ProductCategories.find();
   const total = productCategories.length;
@@ -497,7 +481,7 @@ async function fetchByCategory({ categoryId }) {
 
   // await processDivided(divided, listTasks);
 
-  const categoryRes = divided[0].slice(3, 4).map((item) =>
+  const categoryRes = divided[0].map((item) =>
     limit(async () => {
       const cat = await ProductCategories.findOne({
         cId: String(item.cId),
@@ -597,7 +581,6 @@ async function fetchByCategory({ categoryId }) {
         try {
           // 0) 외부 API
           const productIds = [item._id];
-          let volume = undefined;
 
           const skuData = await withRetry(() => getSkuDetail(item._id), {
             retries: 3,
@@ -650,12 +633,12 @@ async function fetchByCategory({ categoryId }) {
             }
           }
 
-          if (
-            info.original_link &&
-            stripForCompare(info.original_link) !== ""
-          ) {
-            baseDoc.ol = info.original_link;
-          }
+          // if (
+          //   info.original_link &&
+          //   stripForCompare(info.original_link) !== ""
+          // ) {
+          //   baseDoc.ol = info.original_link;
+          // }
 
           if (
             item.promotion_link &&
@@ -709,12 +692,14 @@ async function fetchByCategory({ categoryId }) {
           // };
 
           // 3) 최초 생성 시에만 넣을 SKU 전체(오늘 포인트 포함) — 임베디드 구조
+
           const skusForInsert = skuList.map((s) => {
             return {
               sId: String(s.sku_id), // 문자열로 통일
               c: norm(s.color ?? ""), // 정규화 통일
               link: s.link ?? "",
-              sp: normalizeSpForCompare(s.sku_properties ?? ""), // 정규화 통일
+              sp: canonSkuProps(s.sku_properties ?? ""), // 정규화 통일
+              spKey: normalizeSpForCompare(s.sku_properties ?? ""), // 정규화 통일
               cur: s.currency ?? "KRW",
               pd: {
                 [todayKey]: {
@@ -827,8 +812,9 @@ async function fetchByCategory({ categoryId }) {
             const spRegex = makeSpaceAgnosticPattern(spCanon);
             const cRegex = makeSpaceAgnosticPattern(cNorm);
 
+            const spKey = normalizeSpForCompare(s.sku_properties);
+
             console.log("item:", item._id);
-            console.log("spRegex:", spRegex);
             console.log("금일 첫 업데이트!");
 
             const pricePoint = {
@@ -861,10 +847,7 @@ async function fetchByCategory({ categoryId }) {
                         ],
                       },
                       {
-                        $or: [
-                          { "e.sp": spCanon },
-                          { "e.sp": { $regex: spRegex, $options: "x" } },
-                        ],
+                        $or: [{ "e.spKey": spKey }, { "e.sp": spCanon }],
                       },
                     ],
                   },
@@ -878,6 +861,8 @@ async function fetchByCategory({ categoryId }) {
             const sId = String(s.sku_id);
             const cNorm = colorNorm(s.color);
             const spCanon = canonSkuProps(s.sku_properties);
+
+            const spKey = normalizeSpForCompare(s.sku_properties);
 
             const spRegex = makeSpaceAgnosticPattern(spCanon);
             const cRegex = makeSpaceAgnosticPattern(cNorm);
@@ -910,14 +895,11 @@ async function fetchByCategory({ categoryId }) {
                       {
                         $or: [
                           { "e.c": cNorm },
-                          { "e.c": { $regex: cRegex, $options: "i" } },
+                          { "e.c": { $regex: cRegex, $options: "x" } },
                         ],
                       },
                       {
-                        $or: [
-                          { "e.sp": spCanon },
-                          { "e.sp": { $regex: spRegex, $options: "i" } },
-                        ],
+                        $or: [{ "e.spKey": spKey }, { "e.sp": spCanon }],
                       },
                     ],
                   },

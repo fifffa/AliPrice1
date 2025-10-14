@@ -43,7 +43,7 @@ function stripMinimal(s) {
 }
 
 // 비교용 정규화: 지정 특수문자 + 공백 제거
-function stripForCompare(s) {
+export function stripForCompare(s) {
   const raw = String(s ?? "");
   const translated = translateSkuPropertiesSimple(raw); // ← 먼저 치환
 

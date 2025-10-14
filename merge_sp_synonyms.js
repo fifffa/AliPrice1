@@ -180,8 +180,12 @@ async function processOneDoc(doc) {
     const sid = it?.sId;
     if (!sid) continue; // sId 없는 비정상은 병합 대상 제외
     const cNorm = normalizeCForCompare(it?.c ?? "");
-    const spNorm = normalizeSpForCompare(it?.sp ?? "");
-    console.log("spNorm:", spNorm);
+    let spNorm;
+    if (it?.spKey) {
+      spNorm = it.spKey;
+    } else {
+      spNorm = normalizeSpForCompare(it?.sp ?? "");
+    }
     const key = `${String(sid)}||${String(cNorm)}||${String(spNorm)}`;
 
     if (!buckets.has(key)) buckets.set(key, []);
@@ -242,7 +246,7 @@ async function main1() {
     `🚀 Bulk merge by (sId,c,sp) 시작 (dry-run: ${dryRun ? "YES" : "NO"})`
   );
 
-  const query = { _id: "1005007288239328" };
+  const query = {};
   const projection = { "sku_info.sil": 1 };
   const cursor = ProductDetail.find(query, projection).cursor();
 

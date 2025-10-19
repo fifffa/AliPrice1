@@ -390,6 +390,172 @@ async function processOneDoc2(doc) {
     metrics: { pdAddedTotal, rowsDeleted, groupsMerged },
   };
 }
+async function processOneDoc3(doc) {
+  const sil = doc?.sku_info?.sil || [];
+  if (!sil.length) return { changed: false, before: 0, after: 0, metrics: {} };
+
+  // key = sId||cNorm||spNorm
+  const buckets = new Map();
+  for (const it of sil) {
+    const sid = it?.sId;
+    if (!sid) continue; // sId 없는 비정상은 병합 대상 제외
+    const cNorm = normalizeCForCompare(it?.c ?? "");
+    let spNorm;
+    if (it?.spKey) {
+      spNorm = it.spKey;
+    } else {
+      spNorm = canonSkuProps(it?.sp ?? "");
+    }
+    // const key = `${String(sid)}||
+    // ${String(cNorm)}||
+    // ${String(
+    //   normalizeSpForCompare(it?.sp)
+    // )}`;
+    // const key1 = `${String(sid)}||
+    // ${canonSkuProps(it?.sp ?? "")}`;
+    //   const key2 = `${String(sid)}||
+    //  ${normalizeSpForCompare(it?.sp)}`;
+    const key3 = `${cNorm}||
+   ${normalizeSpForCompare(it?.sp)}`;
+
+    // if (!buckets.has(key1)) buckets.set(key1, []);
+    // buckets.get(key1).push(it);
+
+    if (!buckets.has(key3)) buckets.set(key3, []);
+    buckets.get(key3).push(it);
+  }
+
+  let changed = false;
+  let pdAddedTotal = 0;
+  let rowsDeleted = 0;
+  let groupsMerged = 0;
+
+  const survivors = [];
+  for (const [, items] of buckets.entries()) {
+    if (items.length === 1) {
+      survivors.push(items[0]);
+      continue;
+    }
+    // 병합 그룹: 대표를 고르고 나머지 pd 합침
+    const survivor = pickSurvivor(items);
+    if (!survivor.pd) survivor.pd = new Map();
+
+    for (const it of items) {
+      if (it === survivor) continue;
+      if (!it.pd) it.pd = new Map();
+      pdAddedTotal += mergePdKeepExisting(survivor.pd, it.pd);
+      rowsDeleted++;
+      changed = true;
+    }
+    survivors.push(survivor);
+    groupsMerged++;
+  }
+
+  // buckets에 들어가지 않은(= sId 없던) 잔여 붙이기
+  for (const it of sil) {
+    if (!it?.sId) survivors.push(it);
+  }
+
+  const before = sil.length;
+  const after = survivors.length;
+
+  if (changed) {
+    doc.sku_info.sil = survivors;
+    doc.markModified("sku_info.sil");
+    if (!dryRun) await doc.save();
+  }
+
+  return {
+    changed,
+    before,
+    after,
+    metrics: { pdAddedTotal, rowsDeleted, groupsMerged },
+  };
+}
+async function processOneDoc4(doc) {
+  const sil = doc?.sku_info?.sil || [];
+  if (!sil.length) return { changed: false, before: 0, after: 0, metrics: {} };
+
+  // key = sId||cNorm||spNorm
+  const buckets = new Map();
+  for (const it of sil) {
+    const sid = it?.sId;
+    if (!sid) continue; // sId 없는 비정상은 병합 대상 제외
+    const cNorm = normalizeCForCompare(it?.c ?? "");
+    let spNorm;
+    if (it?.spKey) {
+      spNorm = it.spKey;
+    } else {
+      spNorm = canonSkuProps(it?.sp ?? "");
+    }
+    // const key = `${String(sid)}||
+    // ${String(cNorm)}||
+    // ${String(
+    //   normalizeSpForCompare(it?.sp)
+    // )}`;
+    // const key1 = `${String(sid)}||
+    // ${canonSkuProps(it?.sp ?? "")}`;
+    //   const key2 = `${String(sid)}||
+    //  ${normalizeSpForCompare(it?.sp)}`;
+    //   const key3 = `${cNorm}||
+    //  ${normalizeSpForCompare(it?.sp)}`;
+    const key4 = `${cNorm}||
+   ${canonSkuProps(it?.sp)}`;
+
+    // if (!buckets.has(key1)) buckets.set(key1, []);
+    // buckets.get(key1).push(it);
+
+    if (!buckets.has(key4)) buckets.set(key4, []);
+    buckets.get(key4).push(it);
+  }
+
+  let changed = false;
+  let pdAddedTotal = 0;
+  let rowsDeleted = 0;
+  let groupsMerged = 0;
+
+  const survivors = [];
+  for (const [, items] of buckets.entries()) {
+    if (items.length === 1) {
+      survivors.push(items[0]);
+      continue;
+    }
+    // 병합 그룹: 대표를 고르고 나머지 pd 합침
+    const survivor = pickSurvivor(items);
+    if (!survivor.pd) survivor.pd = new Map();
+
+    for (const it of items) {
+      if (it === survivor) continue;
+      if (!it.pd) it.pd = new Map();
+      pdAddedTotal += mergePdKeepExisting(survivor.pd, it.pd);
+      rowsDeleted++;
+      changed = true;
+    }
+    survivors.push(survivor);
+    groupsMerged++;
+  }
+
+  // buckets에 들어가지 않은(= sId 없던) 잔여 붙이기
+  for (const it of sil) {
+    if (!it?.sId) survivors.push(it);
+  }
+
+  const before = sil.length;
+  const after = survivors.length;
+
+  if (changed) {
+    doc.sku_info.sil = survivors;
+    doc.markModified("sku_info.sil");
+    if (!dryRun) await doc.save();
+  }
+
+  return {
+    changed,
+    before,
+    after,
+    metrics: { pdAddedTotal, rowsDeleted, groupsMerged },
+  };
+}
 
 async function main1() {
   await dbConnect();
@@ -401,28 +567,28 @@ async function main1() {
   const projection = { "sku_info.sil": 1 };
   const cursor = ProductDetail.find(query, projection).cursor();
 
-  // let visited1 = 0;
-  // let changedDocs1 = 0;
-  // let totalRowsDeleted1 = 0;
-  // let totalPdAdded1 = 0;
-  // let totalGroupsMerged1 = 0;
+  let visited1 = 0;
+  let changedDocs1 = 0;
+  let totalRowsDeleted1 = 0;
+  let totalPdAdded1 = 0;
+  let totalGroupsMerged1 = 0;
 
-  // for await (const doc of cursor) {
-  //   visited1++;
-  //   console.log("id:", doc._id);
-  //   const { changed, before, after, metrics } = await processOneDoc1(doc);
-  //   if (changed) {
-  //     changedDocs1++;
-  //     totalRowsDeleted1 += metrics.rowsDeleted || 0;
-  //     totalPdAdded1 += metrics.pdAddedTotal || 0;
-  //     totalGroupsMerged1 += metrics.groupsMerged || 0;
+  for await (const doc of cursor) {
+    visited1++;
+    console.log("id:", doc._id);
+    const { changed, before, after, metrics } = await processOneDoc3(doc);
+    if (changed) {
+      changedDocs1++;
+      totalRowsDeleted1 += metrics.rowsDeleted || 0;
+      totalPdAdded1 += metrics.pdAddedTotal || 0;
+      totalGroupsMerged1 += metrics.groupsMerged || 0;
 
-  //     console.log(
-  //       `✔ _id=${doc._id} | sil ${before} → ${after} | +pd:${metrics.pdAddedTotal} | del:${metrics.rowsDeleted} | groups:${metrics.groupsMerged}`
-  //     );
-  //   }
-  //   if (limit && visited1 >= limit) break;
-  // }
+      console.log(
+        `✔ _id=${doc._id} | sil ${before} → ${after} | +pd:${metrics.pdAddedTotal} | del:${metrics.rowsDeleted} | groups:${metrics.groupsMerged}`
+      );
+    }
+    if (limit && visited1 >= limit) break;
+  }
 
   let visited2 = 0;
   let changedDocs2 = 0;
@@ -433,7 +599,7 @@ async function main1() {
   for await (const doc of cursor) {
     visited2++;
     console.log("id:", doc._id);
-    const { changed, before, after, metrics } = await processOneDoc2(doc);
+    const { changed, before, after, metrics } = await processOneDoc4(doc);
     if (changed) {
       changedDocs2++;
       totalRowsDeleted2 += metrics.rowsDeleted || 0;

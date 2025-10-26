@@ -576,7 +576,7 @@ async function main1() {
   for await (const doc of cursor) {
     visited1++;
     console.log("id:", doc._id);
-    const { changed, before, after, metrics } = await processOneDoc1(doc);
+    const { changed, before, after, metrics } = await processOneDoc3(doc);
     if (changed) {
       changedDocs1++;
       totalRowsDeleted1 += metrics.rowsDeleted || 0;
@@ -599,7 +599,7 @@ async function main1() {
   for await (const doc of cursor) {
     visited2++;
     console.log("id:", doc._id);
-    const { changed, before, after, metrics } = await processOneDoc2(doc);
+    const { changed, before, after, metrics } = await processOneDoc4(doc);
     if (changed) {
       changedDocs2++;
       totalRowsDeleted2 += metrics.rowsDeleted || 0;

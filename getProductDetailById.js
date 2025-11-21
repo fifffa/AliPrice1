@@ -137,7 +137,7 @@ if (isDirect) {
   (async () => {
     // CLI 인자에서 상품ID 받기: node fetchByProductId.js 1005007856343236 4000669887458
     // const cliIds = process.argv.slice(2);
-    const ids = ["1005008412177100"]; // 없으면 예시 값
+    const ids = ["1005008013678116"]; // 없으면 예시 값
 
     const product = await getProductDetailsById(ids, {
       country: "KR",
@@ -145,7 +145,7 @@ if (isDirect) {
       target_currency: "KRW",
     });
 
-    // console.log("product:", product.items);
+    console.log("product:", product.items);
 
     // console.dir(product.slice(0, 2), { depth: 2, maxArrayLength: 20 });
     // const r = product?.aliexpress_affiliate_productdetail_get_response;

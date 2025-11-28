@@ -7,8 +7,8 @@ import { withRetry } from "./utils/withRetry.js";
 
 // --- MongoDB 연결 URI 설정 ---
 
-// --- 기준 일수(오늘 기준 70일 이전 것 삭제) ---
-const THRESHOLD_DAYS = 70;
+// --- 기준 일수(오늘 기준 65일 이전 것 삭제) ---
+const THRESHOLD_DAYS = 65;
 let productId;
 const isPlList = [];
 

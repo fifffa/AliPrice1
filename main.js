@@ -478,9 +478,14 @@ async function fetchByCategory({ categoryId }) {
 
   const listTasks = { item: [], dataBaseRes: [] };
 
-  // ---- divided[1]은 2개로 나눠서 배포
-  //  .slice(0, Math.round(divided[1].length / 2))
-  // .slice(Math.round(divided[1].length / 2), Math.round(divided[1].length))
+  // ---- divided[1]은 3개로 나눠서 배포
+  //  .slice(0, Math.round(divided[1].length / 3))
+  //  .slice(Math.round(( divided[1].length) / 3),Math.round(2*divided[1].length)/3)
+  //  .slice(Math.round((2 * divided[1].length) / 3),Math.round(divided[1].length))
+
+  // divided[2]은 2개로 나눠서 배포
+  //  .slice(0, Math.round(divided[2].length / 2))
+  //  .slice(Math.round(divided[2].length / 2), Math.round(divided[2].length )
 
   // ---- divided[5]은 3개로 나눠서 배포
   // .slice(0, Math.round(divided[5].length / 3));
@@ -490,48 +495,53 @@ async function fetchByCategory({ categoryId }) {
   // );
   // .slice(2 * Math.round(divided[5].length / 3), Math.round(divided[5].length));
 
-  const categoryRes = divided[0].map((item) =>
-    limit(async () => {
-      const cat = await ProductCategories.findOne({
-        cId: String(item.cId),
-      });
+  const categoryRes = divided[0]
+    // .slice(
+    //   Math.round((2 * divided[1].length) / 3),
+    //   Math.round(divided[1].length)
+    // )
+    .map((item) =>
+      limit(async () => {
+        const cat = await ProductCategories.findOne({
+          cId: String(item.cId),
+        });
 
-      if (!cat?._id) {
-        console.log("카테고리 없음:", item.cId);
-        return;
-      }
+        if (!cat?._id) {
+          console.log("카테고리 없음:", item.cId);
+          return;
+        }
 
-      let res = await ProductDetail.find({ cId1: cat._id })
-        .populate("cId1", "cId cn")
-        .populate("cId2", "cId cn")
-        .select("_id vol  ")
-        .lean();
-
-      if (!res?.length) {
-        res = await ProductDetail.find({ cId2: cat._id })
+        let res = await ProductDetail.find({ cId1: cat._id })
           .populate("cId1", "cId cn")
           .populate("cId2", "cId cn")
           .select("_id vol  ")
           .lean();
-      }
 
-      const { items, raw, serverCount, filteredCount, note } =
-        await fetchByCategory({
-          categoryId: item.cId,
-        });
+        if (!res?.length) {
+          res = await ProductDetail.find({ cId2: cat._id })
+            .populate("cId1", "cId cn")
+            .populate("cId2", "cId cn")
+            .select("_id vol  ")
+            .lean();
+        }
 
-      console.log("cid:", item.cId);
-      console.log("items:", items.length);
-      console.log("res:", res.length);
+        const { items, raw, serverCount, filteredCount, note } =
+          await fetchByCategory({
+            categoryId: item.cId,
+          });
 
-      // fetchByCategory안에 filtered 변수도 볼 것 !
+        console.log("cid:", item.cId);
+        console.log("items:", items.length);
+        console.log("res:", res.length);
 
-      // fetchByCategory 에서 요청을 volume 이 170 이상인것만 받아옴 수정할려면 normalize함수 볼 것
+        // fetchByCategory안에 filtered 변수도 볼 것 !
 
-      listTasks.item.push(...items);
-      listTasks.dataBaseRes.push(...res);
-    })
-  );
+        // fetchByCategory 에서 요청을 volume 이 170 이상인것만 받아옴 수정할려면 normalize함수 볼 것
+
+        listTasks.item.push(...items);
+        listTasks.dataBaseRes.push(...res);
+      })
+    );
 
   await Promise.allSettled(categoryRes);
 

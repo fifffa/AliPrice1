@@ -1008,7 +1008,7 @@ async function fetchByCategory({ categoryId }) {
                 },
                 arrayFilters: [
                   {
-                    "e.sId": sId,
+                    // "e.sId": sId,
                     $and: [
                       {
                         $or: [

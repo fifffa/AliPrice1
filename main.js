@@ -508,7 +508,7 @@ async function fetchByCategory({ categoryId }) {
   // )
   // .slice(2 * Math.round(divided[5].length / 3), Math.round(divided[5].length))
 
-  const categoryRes = divided[13]
+  const categoryRes = divided[0]
     // .slice(2 * Math.round(divided[5].length / 3), Math.round(divided[5].length))
     .map((item) =>
       limit(async () => {
@@ -773,6 +773,17 @@ async function fetchByCategory({ categoryId }) {
           if (cId2) {
             baseDoc.cId2 = cId2;
           }
+
+          if (info.display_category_name_l1) {
+            baseDoc.c1n = info.display_category_name_l1;
+          }
+          if (info.display_category_name_l2) {
+            baseDoc.c2n = info.display_category_name_l2;
+          }
+          if (info.display_category_name_l3) {
+            baseDoc.c3n = info.display_category_name_l3;
+          }
+
           if (info.title && stripForCompare(info.title) !== "") {
             baseDoc.tt = info.title;
           }
@@ -875,7 +886,6 @@ async function fetchByCategory({ categoryId }) {
             //   continue;
             // }
             const key1 = toKey1(item1?.color, item1?.sku_properties);
-
             const exist1 = skuMap1.get(key1);
             // console.log("exist1:", exist1);
 

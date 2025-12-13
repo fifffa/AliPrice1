@@ -1,63 +1,91 @@
-// scripts/purgeOldPricePoints.js
-import mongoose from "mongoose";
-import ProductDetail from "./models/ProductDetail.js";
-import dbConnect from "./utils/dbConnect.js";
+// // scripts/purgeOldPricePoints.js
+// import mongoose from "mongoose";
+// import ProductDetail from "./models/ProductDetail.js";
+// import dbConnect from "./utils/dbConnect.js";
 
-async function run() {
-  await dbConnect();
+// async function run() {
+//   await dbConnect();
 
-  // 기준 시각: 한 달 전
-  const now = new Date();
-  const monthAgo = new Date(now);
-  monthAgo.setMonth(monthAgo.getMonth() - 1);
+//   const now = new Date();
+//   const monthAgo = new Date(now);
+//   monthAgo.setMonth(monthAgo.getMonth() - 1);
 
-  const res = await ProductDetail.updateMany(
-    {}, // 필요 시 조건 변경
-    [
-      {
-        $set: {
-          "sku_info.sil": {
-            $filter: {
-              input: { $ifNull: ["$sku_info.sil", []] },
-              as: "s",
-              cond: {
-                // 이 SKU의 pd 중 monthAgo 이상인 포인트가 1개 이상이면 유지
-                $gt: [
-                  {
-                    $size: {
-                      $filter: {
-                        input: {
-                          $objectToArray: { $ifNull: ["$$s.pd", {}] },
-                        },
-                        as: "pp",
-                        cond: {
-                          $gte: [
-                            { $toDate: { $ifNull: ["$$pp.v.t", new Date(0)] } },
-                            monthAgo,
-                          ],
-                        },
-                      },
-                    },
-                  },
-                  0,
-                ],
-              },
-            },
-          },
-        },
-      },
-    ]
-  );
+//   const res = await ProductDetail.updateMany({}, [
+//     {
+//       $set: {
+//         "sku_info.sil": {
+//           // 1) 각 SKU의 pd를 monthAgo 이후 키만 남기도록 정리
+//           $let: {
+//             vars: {
+//               cleaned: {
+//                 $map: {
+//                   input: { $ifNull: ["$sku_info.sil", []] },
+//                   as: "s",
+//                   in: {
+//                     $mergeObjects: [
+//                       "$$s",
+//                       {
+//                         pd: {
+//                           $arrayToObject: {
+//                             $filter: {
+//                               input: {
+//                                 $objectToArray: { $ifNull: ["$$s.pd", {}] },
+//                               },
+//                               as: "pp",
+//                               cond: {
+//                                 $gte: [
+//                                   {
+//                                     $dateFromString: {
+//                                       dateString: "$$pp.k",
+//                                       onError: new Date(0),
+//                                       onNull: new Date(0),
+//                                     },
+//                                   },
+//                                   monthAgo,
+//                                 ],
+//                               },
+//                             },
+//                           },
+//                         },
+//                       },
+//                     ],
+//                   },
+//                 },
+//               },
+//             },
+//             // 2) 정리 후 pd가 비어버린 SKU는 제거
+//             in: {
+//               $filter: {
+//                 input: "$$cleaned",
+//                 as: "s",
+//                 cond: {
+//                   $gt: [
+//                     {
+//                       $size: {
+//                         $objectToArray: { $ifNull: ["$$s.pd", {}] },
+//                       },
+//                     },
+//                     0,
+//                   ],
+//                 },
+//               },
+//             },
+//           },
+//         },
+//       },
+//     },
+//   ]);
 
-  console.log(
-    `matched: ${res.matchedCount ?? res.n}, modified: ${
-      res.modifiedCount ?? res.nModified
-    }`
-  );
-  await mongoose.disconnect();
-}
+//   console.log(
+//     `matched: ${res.matchedCount ?? res.n}, modified: ${
+//       res.modifiedCount ?? res.nModified
+//     }`
+//   );
 
-run().catch((e) => {
-  console.error(e);
-  process.exit(1);
-});
+//   await mongoose.disconnect();
+// }
+
+// run().catch((e) => {
+//   console.error(e);
+//   process.exit(1);
+// });

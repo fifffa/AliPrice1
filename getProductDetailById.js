@@ -137,7 +137,7 @@ if (isDirect) {
   (async () => {
     // CLI 인자에서 상품ID 받기: node fetchByProductId.js 1005007856343236 4000669887458
     // const cliIds = process.argv.slice(2);
-    const ids = ["1005008290630438"]; // 없으면 예시 값
+    const ids = ["1005007345582227"]; // 없으면 예시 값
 
     const product = await getProductDetailsById(ids, {
       country: "KR",

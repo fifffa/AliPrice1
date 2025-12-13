@@ -563,7 +563,7 @@ async function main1() {
     `🚀 Bulk merge by (sId,c,sp) 시작 (dry-run: ${dryRun ? "YES" : "NO"})`
   );
 
-  const query = { _id: "1005008833041258" };
+  const query = {};
   const projection = { "sku_info.sil": 1 };
   const cursor = ProductDetail.find(query, projection).cursor();
 

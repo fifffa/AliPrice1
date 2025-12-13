@@ -501,15 +501,15 @@ async function fetchByCategory({ categoryId }) {
   //  .slice(Math.round(divided[2].length / 2), Math.round(divided[2].length ))
 
   // ---- divided[5]은 3개로 나눠서 배포
-  // .slice(0, Math.round(divided[5].length / 3));
+  // .slice(0, Math.round(divided[5].length / 3))
   // .slice(
   //   Math.round(divided[5].length / 3),
   //   2 * Math.round(divided[5].length / 3)
-  // );
-  // .slice(2 * Math.round(divided[5].length / 3), Math.round(divided[5].length));
+  // )
+  // .slice(2 * Math.round(divided[5].length / 3), Math.round(divided[5].length))
 
-  const categoryRes = divided[0]
-    // .slice(Math.round(divided[2].length / 2), Math.round(divided[2].length))
+  const categoryRes = divided[13]
+    // .slice(2 * Math.round(divided[5].length / 3), Math.round(divided[5].length))
     .map((item) =>
       limit(async () => {
         const cat = await ProductCategories.findOne({
@@ -557,7 +557,7 @@ async function fetchByCategory({ categoryId }) {
 
   // 단일 데이터베이스 요청
   // const categoryRes = async () => {
-  //   let res = await ProductDetail.find({ _id: "1005007528780320" })
+  //   let res = await ProductDetail.find({ _id: "1005007986436305" })
   //     .populate("cId1", "cId cn")
   //     .populate("cId2", "cId cn")
   //     .lean({ virtuals: true });

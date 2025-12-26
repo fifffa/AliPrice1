@@ -199,6 +199,7 @@ async function getServerSideProps(ctx) {
   const categoryList = [
     { categoryName: "음식", categoryId: "2" },
     { categoryName: "가전제품", categoryId: "6" },
+    { categoryName: "소비자 가전", categoryId: "44" },
     { categoryName: "태블릿", categoryId: "200001086" },
     { categoryName: "이동 전화", categoryId: "5090301" },
     { categoryName: "노트북", categoryId: "702" },

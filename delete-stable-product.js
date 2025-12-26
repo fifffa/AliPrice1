@@ -22,7 +22,7 @@ import dbConnect from "./utils/dbConnect.js";
  */
 export async function main({
   query = {},
-  days = 16, // ✅ 기본 16일
+  days = 13, // ✅ 기본 13일
   verbose = false,
   disconnectAfter = false,
   batchSize = 500,

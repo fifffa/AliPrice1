@@ -7,7 +7,7 @@ import CategoryLandingProduct from "./models/CategoryLandingProduct.js";
 // ── 기준: 현재로부터 4일
 const FOUR_DAYS_MS = 4 * 24 * 60 * 60 * 1000;
 
-function analyzePd(pdObj, start, end) {
+function analyzePd(pdObj, start, end, productId) {
   if (!pdObj || typeof pdObj !== "object") {
     return {
       hasData: false,
@@ -94,9 +94,13 @@ function analyzePd(pdObj, start, end) {
 
   // 평균가 대비 현재가 할인율(%)
   const avgToCurrentDiscountPct =
-    avgSale != null && avgSale > 0 && latestSale != null
+    avgSale != null &&
+    avgSale > 0 &&
+    latestSale != null &&
+    cntSale >= 30 &&
+    avgSale - latestSale >= 0
       ? ((avgSale - latestSale) / avgSale) * 100
-      : null;
+      : 0;
 
   // 표시용(소수 1자리) - 필요 없으면 빼도 됨
   const avgToCurrentDiscountPctRounded =
@@ -181,7 +185,7 @@ function getRange(rangeParam) {
     return { start, end: now, label: "calendarMonth" };
   }
   const end = now;
-  const start = new Date(end.getTime() - 30 * 24 * 60 * 60 * 1000);
+  const start = new Date(end.getTime() - 60 * 24 * 60 * 60 * 1000);
   return { start, end, label: "rolling30" };
 }
 
@@ -217,11 +221,6 @@ async function getServerSideProps(ctx) {
     { categoryName: "조명", categoryId: "39" },
   ];
 
-  const allProductPsList = [];
-  const allProductVolList = [];
-  const allProductRnList = [];
-  const allProductOffList = [];
-
   const { start, end, label: range } = getRange(undefined);
 
   // 1) 원문 조회
@@ -238,6 +237,9 @@ async function getServerSideProps(ctx) {
 
     if (!raw?.length) raw = await ProductDetail.find({ cId2: cid }).lean();
 
+    console.log("category:", category.categoryName);
+    console.log("raw:", raw.length);
+
     const allSkus = [];
 
     // 평균가대비 최저가 싼 리스트
@@ -248,21 +250,18 @@ async function getServerSideProps(ctx) {
 
         const sku_filtered = sil
           .map((sku) => {
-            const { lowestSale, latestSale, isFlat } = analyzePd(
-              sku?.pd,
-              start,
-              end
-            );
+            const { lowestSale, latestSale, avgToCurrentDiscountPct } =
+              analyzePd(sku?.pd, start, end, doc._id);
 
             if (!doc._id) return null;
 
             // 기간 내 포인트 없거나 flat 제거
             if (lowestSale == null || latestSale == null) return null;
 
-            if (isFlat) return null;
+            // if (isFlat) return null;
 
             // 최신가가 기간 최저가와 같지 않으면 제거
-            if (Number(latestSale) !== Number(lowestSale)) return null;
+            // if (Number(latestSale) !== Number(lowestSale)) return null;
 
             const latestPdAt = getLatestPdTime(sku?.pd);
             const now = new Date();
@@ -278,10 +277,7 @@ async function getServerSideProps(ctx) {
               return null;
 
             const latest = Number(latestSale);
-            const ratio = latest / avgSale; // 낮을수록 "평균 대비 현재가"가 저렴
-
-            // console.log("doc:", doc);
-            console.log("성공");
+            const ratio = avgToCurrentDiscountPct;
 
             // 상위 랭킹용 풀 컬렉션에 적재
             allSkus.push({
@@ -293,6 +289,8 @@ async function getServerSideProps(ctx) {
               sp: sku?.sp,
               cur: sku?.cur || "KRW",
               latestSale: latest,
+              tt: doc?.tt,
+
               avgSale,
               ratio,
             });
@@ -456,7 +454,6 @@ async function getServerSideProps(ctx) {
 
       .slice(0, 20)
       .map((item) => {
-        allProductPsList.push(item);
         return item._id;
       });
     const volTop20 = volList
@@ -464,29 +461,22 @@ async function getServerSideProps(ctx) {
       .slice(0, 20)
 
       .map((item) => {
-        allProductVolList.push(item);
-
         return item._id;
       });
     const rnTop20 = rnList
       .sort((a, b) => b.rn - a.rn)
       .slice(0, 20)
       .map((item) => {
-        allProductRnList.push(item);
         // console.log("item:", item);
         return item._id;
       });
 
     // 할인탑 100 중복검사 코드
 
-    allProductOffList.push(...allSkus);
-
     const offTop20 = [];
     const seen = new Set();
 
-    for (const item of allSkus.sort(
-      (a, b) => a.ratio - b.ratio || a.latestSale - b.latestSale
-    )) {
+    for (const item of allSkus.sort((a, b) => b.ratio - a.ratio)) {
       // 1) 저장에 쓸 product 확정(옵션 B: ProductDetail의 _id가 오길 기대)
       const product = item.productId ?? item._id ?? item.pid;
       if (!product) continue; // 필수값 없으면 스킵
@@ -502,15 +492,14 @@ async function getServerSideProps(ctx) {
         sId: item.sId ?? null,
         c: item.c ?? null,
         sp: item.sp,
+        ratio: item.ratio,
+        tt: item.tt,
       });
 
       if (offTop20.length === 20) break; // 100개에서 종료
     }
 
-    allProductOffList.push(...offTop20);
-    allProductRnList.push(...rnTop20);
-    allProductPsList.push(...psTop20);
-    allProductVolList.push(...volTop20);
+    // console.log("offTop20", offTop20.slice(0, 100));
 
     const res = await CategoryLandingProduct.updateOne(
       { categoryName: category.categoryName },
@@ -530,60 +519,6 @@ async function getServerSideProps(ctx) {
 
     // 상품 정렬: 대표 최저가 오름차순 → 리뷰수 rn 내림차순
   }
-
-  const allProductPsTop20 = allProductPsList
-    .sort((a, b) => b.ps - a.ps)
-    .slice(0, 20)
-    .map((item) => item._id);
-  const allProductVolTop20 = allProductVolList
-    .sort((a, b) => b.vol - a.vol)
-    .slice(0, 20)
-    .map((item) => item._id);
-  const allProductRnTop20 = allProductRnList
-    .sort((a, b) => b.rn - a.rn)
-    .slice(0, 20)
-    .map((item) => item._id);
-
-  const allProductOffTop20 = [];
-  const seen = new Set();
-
-  for (const item of allProductOffList.sort(
-    (a, b) => a.ratio - b.ratio || a.latestSale - b.latestSale
-  )) {
-    // 1) 저장에 쓸 product 확정
-    const product = item.productId ?? item._id ?? item.pid;
-    if (!product) continue;
-
-    // 2) 동일 기준으로 중복 체크
-    const key =
-      product?.toHexString?.() ?? product?.toString?.() ?? String(product);
-    if (seen.has(key)) continue;
-    seen.add(key);
-
-    // 4) 결과 푸시(옵션 B 스키마에 바로 맞는 형태)
-    allProductOffTop20.push({
-      product, // ← offList[].product에 그대로 사용
-      c: item.c ?? null,
-      sp: item.sp,
-      sId: item.sId ?? null,
-    });
-
-    if (allProductOffTop20.length === 20) break;
-  }
-
-  const res = await CategoryLandingProduct.updateOne(
-    { categoryName: "전체" },
-    {
-      $set: {
-        rnList: allProductRnTop20,
-        volList: allProductVolTop20,
-        psList: allProductPsTop20,
-        offList: allProductOffTop20,
-      },
-      $setOnInsert: { categoryName: "전체" }, // 문서 없으면 생성 시 이름도 세팅
-    },
-    { runValidators: true, upsert: true } // 유효성검사 + 없으면 생성
-  );
 
   process.exit(0);
 }

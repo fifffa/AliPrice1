@@ -21,7 +21,7 @@ import dbConnect from "./utils/dbConnect.js";
  * @returns {Promise<{ now:string, threshold:string, query:Object, total:number, deleted:number, kept:number, deletedIds:string[] }>}
  */
 export async function main({
-  query = {},
+  query = { },
   days = 13, // ✅ 기본 13일
   verbose = false,
   disconnectAfter = false,

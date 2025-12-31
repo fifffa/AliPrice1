@@ -523,63 +523,65 @@ async function fetchByCategory({ categoryId }) {
   //   Math.round(divided[10].length )
   // )
 
-  const categoryRes = divided[0]
-    // .slice(Math.round(divided[10].length / 2), Math.round(divided[10].length))
-    .map((item) =>
-      limit(async () => {
-        const cat = await ProductCategories.findOne({
-          cId: String(item.cId),
-        });
+  // const categoryRes = divided[13]
+  //   // .slice(Math.round(divided[10].length / 2), Math.round(divided[10].length))
+  //   .map((item) =>
+  //     limit(async () => {
+  //       const cat = await ProductCategories.findOne({
+  //         cId: String(item.cId),
+  //       });
 
-        if (!cat?._id) {
-          console.log("카테고리 없음:", item.cId);
-          return;
-        }
+  //       if (!cat?._id) {
+  //         console.log("카테고리 없음:", item.cId);
+  //         return;
+  //       }
 
-        let res = await ProductDetail.find({ cId1: cat._id })
-          .populate("cId1", "cId cn")
-          .populate("cId2", "cId cn")
-          .select("_id vol  ")
-          .lean();
+  //       let res = await ProductDetail.find({ cId1: cat._id })
+  //         .populate("cId1", "cId cn")
+  //         .populate("cId2", "cId cn")
+  //         .select("_id vol  ")
+  //         .lean();
 
-        if (!res?.length) {
-          res = await ProductDetail.find({ cId2: cat._id })
-            .populate("cId1", "cId cn")
-            .populate("cId2", "cId cn")
-            .select("_id vol  ")
-            .lean();
-        }
+  //       if (!res?.length) {
+  //         res = await ProductDetail.find({ cId2: cat._id })
+  //           .populate("cId1", "cId cn")
+  //           .populate("cId2", "cId cn")
+  //           .select("_id vol  ")
+  //           .lean();
+  //       }
 
-        const { items, raw, serverCount, filteredCount, note } =
-          await fetchByCategory({
-            categoryId: item.cId,
-          });
+  //       const { items, raw, serverCount, filteredCount, note } =
+  //         await fetchByCategory({
+  //           categoryId: item.cId,
+  //         });
 
-        console.log("cid:", item.cId);
-        console.log("items:", items.length);
-        console.log("res:", res.length);
+  //       console.log("cid:", item.cId);
+  //       console.log("items:", items.length);
+  //       console.log("res:", res.length);
 
-        // fetchByCategory안에 filtered 변수도 볼 것 !
+  //       // fetchByCategory안에 filtered 변수도 볼 것 !
 
-        // fetchByCategory 에서 요청을 volume 이 170 이상인것만 받아옴 수정할려면 normalize함수 볼 것
+  //       // fetchByCategory 에서 요청을 volume 이 170 이상인것만 받아옴 수정할려면 normalize함수 볼 것
 
-        listTasks.item.push(...items);
-        listTasks.dataBaseRes.push(...res);
-      })
-    );
+  //       listTasks.item.push(...items);
+  //       listTasks.dataBaseRes.push(...res);
+  //     })
+  //   );
 
-  await Promise.allSettled(categoryRes);
+  // await Promise.allSettled(categoryRes);
 
   // 단일 데이터베이스 요청
-  // const categoryRes = async () => {
-  //   let res = await ProductDetail.find({ _id: "1005008152051252" })
-  //     .populate("cId1", "cId cn")
-  //     .populate("cId2", "cId cn")
-  //     .lean({ virtuals: true });
 
-  //   // listTasks.item.push(...items);
-  //   listTasks.dataBaseRes.push(...res);
-  // };
+  const categoryRes = async () => {
+    let res = await ProductDetail.find({ _id: "1005007307895780" })
+      .populate("cId1", "cId cn")
+      .populate("cId2", "cId cn")
+      .lean({ virtuals: true });
+
+    // listTasks.item.push(...items);
+    // listTasks.dataBaseRes.push({_id:'1005007307895780'});
+    listTasks.dataBaseRes.push(...res);
+  };
 
   // await categoryRes();
 

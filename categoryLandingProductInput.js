@@ -200,25 +200,56 @@ async function getServerSideProps(ctx) {
 
   await dbConnect();
 
+  // const categoryList = [
+  //   { categoryName: "음식", categoryId: "2" },
+  //   { categoryName: "가전제품", categoryId: "6" },
+  //   { categoryName: "소비자 가전", categoryId: "44" },
+  //   { categoryName: "태블릿", categoryId: "200001086" },
+  //   { categoryName: "이동 전화", categoryId: "5090301" },
+  //   { categoryName: "노트북", categoryId: "702" },
+  //   { categoryName: "문구", categoryId: "21" },
+  //   { categoryName: "생활용품", categoryId: "13" },
+  //   { categoryName: "뷰티/헬스", categoryId: "66" },
+  //   { categoryName: "주방용품", categoryId: "200000920" },
+  //   { categoryName: "남성의류", categoryId: "200000343" },
+  //   { categoryName: "여성의류", categoryId: "200000345" },
+  //   { categoryName: "신발", categoryId: "322" },
+  //   { categoryName: "스포츠", categoryId: "18" },
+  //   { categoryName: "완구/취미", categoryId: "26" },
+  //   { categoryName: "자동차용품", categoryId: "34" },
+  //   { categoryName: "안전/보안", categoryId: "30" },
+  //   { categoryName: "조명", categoryId: "39" },
+  // ];
   const categoryList = [
     { categoryName: "음식", categoryId: "2" },
-    { categoryName: "가전제품", categoryId: "6" },
-    { categoryName: "소비자 가전", categoryId: "44" },
-    { categoryName: "태블릿", categoryId: "200001086" },
-    { categoryName: "이동 전화", categoryId: "5090301" },
-    { categoryName: "노트북", categoryId: "702" },
-    { categoryName: "문구", categoryId: "21" },
-    { categoryName: "생활용품", categoryId: "13" },
-    { categoryName: "뷰티/헬스", categoryId: "66" },
-    { categoryName: "주방용품", categoryId: "200000920" },
-    { categoryName: "남성의류", categoryId: "200000343" },
-    { categoryName: "여성의류", categoryId: "200000345" },
-    { categoryName: "신발", categoryId: "322" },
-    { categoryName: "스포츠", categoryId: "18" },
-    { categoryName: "완구/취미", categoryId: "26" },
-    { categoryName: "자동차용품", categoryId: "34" },
-    { categoryName: "안전/보안", categoryId: "30" },
-    { categoryName: "조명", categoryId: "39" },
+    // { categoryName: "그래픽 카드", categoryId: "2" },
+    { categoryName: "태블릿", categoryId: "2" },
+    // { categoryName: "노트북", categoryId: "2" },
+    // { categoryName: "데스크탑", categoryId: "2" },
+    { categoryName: "마우스 및 키보드", categoryId: "2" },
+    { categoryName: "LCD 모니터", categoryId: "2" },
+    { categoryName: "스피커", categoryId: "2" },
+    { categoryName: "SSD", categoryId: "2" },
+    { categoryName: "램", categoryId: "2" },
+    { categoryName: "PC 전원 공급 장치", categoryId: "2" }, // 파워서플라이
+    { categoryName: "컴퓨터 케이스 및 타워", categoryId: "2" }, // 컴퓨터 케이스
+    // { categoryName: "PC 팬 & 쿨링", categoryId: "2" }, // 쿨러
+    { categoryName: "AIO CPU 액체 냉각", categoryId: "2" }, // 쿨러
+    { categoryName: "낚시 미끼", categoryId: "2" }, // 쿨러
+    { categoryName: "낚시바늘", categoryId: "2" }, // 쿨러
+    { categoryName: "낚시 릴", categoryId: "2" }, // 쿨러
+    { categoryName: "낚시 줄", categoryId: "2" }, // 쿨러
+    { categoryName: "태클박스", categoryId: "2" }, // 쿨러
+    { categoryName: "낚시대", categoryId: "2" }, // 쿨러
+    { categoryName: "낚시 찌", categoryId: "2" }, // 쿨러
+    { categoryName: "낚시 가방", categoryId: "2" }, // 쿨러
+    // { categoryName: "CPU 팬 및 히트싱크", categoryId: "2" }, // 쿨러
+    // { categoryName: "CPU 팬 및 히트싱크", categoryId: "2" }, // 쿨러
+    // { categoryName: "CPU 팬 및 히트싱크", categoryId: "2" }, // 쿨러
+    // { categoryName: "CPU 팬 및 히트싱크", categoryId: "2" }, // 쿨러
+    // { categoryName: "CPU 팬 및 히트싱크", categoryId: "2" }, // 쿨러
+    // { categoryName: "CPU 팬 및 히트싱크", categoryId: "2" }, // 쿨러
+    // { categoryName: "CPU 팬 및 히트싱크", categoryId: "2" }, // 쿨러
   ];
 
   const { start, end, label: range } = getRange(undefined);
@@ -228,16 +259,22 @@ async function getServerSideProps(ctx) {
   for (let category of categoryList) {
     let raw;
 
-    const catDoc = await ProductCategories.findOne({
-      cId: String(category.categoryId),
+    // const catDoc = await ProductCategories.findOne({
+    //   cId: String(category.categoryId),
+    // }).lean();
+    // const cid = catDoc?._id?.toString();
+
+    raw = await ProductDetail.find({
+      $or: [
+        { c1n: category.categoryName },
+        { c2n: category.categoryName },
+        { c3n: category.categoryName },
+        { c4n: category.categoryName },
+      ],
     }).lean();
-    const cid = catDoc?._id?.toString();
 
-    raw = await ProductDetail.find({ cId1: cid }).lean();
+    // if (!raw?.length) raw = await ProductDetail.find({ cId2: cid }).lean();
 
-    if (!raw?.length) raw = await ProductDetail.find({ cId2: cid }).lean();
-
-    console.log("category:", category.categoryName);
     console.log("raw:", raw.length);
 
     const allSkus = [];
@@ -257,6 +294,8 @@ async function getServerSideProps(ctx) {
 
             // 기간 내 포인트 없거나 flat 제거
             if (lowestSale == null || latestSale == null) return null;
+
+            if (Number(avgToCurrentDiscountPct <= 0)) return null;
 
             // if (isFlat) return null;
 
@@ -333,7 +372,7 @@ async function getServerSideProps(ctx) {
             const { lowestSale, latestSale, isFlat } = analyzePd(
               sku?.pd,
               start,
-              end
+              end,
             );
 
             // 기존 조건
@@ -374,7 +413,7 @@ async function getServerSideProps(ctx) {
             const { lowestSale, latestSale, isFlat } = analyzePd(
               sku?.pd,
               start,
-              end
+              end,
             );
 
             // 기존 조건
@@ -416,7 +455,7 @@ async function getServerSideProps(ctx) {
             const { lowestSale, latestSale, isFlat } = analyzePd(
               sku?.pd,
               start,
-              end
+              end,
             );
 
             // 기존 조건
@@ -499,7 +538,7 @@ async function getServerSideProps(ctx) {
       if (offTop20.length === 20) break; // 100개에서 종료
     }
 
-    // console.log("offTop20", offTop20.slice(0, 100));
+    console.log("offTop20", offTop20.slice(0, 20));
 
     const res = await CategoryLandingProduct.updateOne(
       { categoryName: category.categoryName },
@@ -512,7 +551,7 @@ async function getServerSideProps(ctx) {
         },
         $setOnInsert: { categoryName: category.categoryName }, // 문서 없으면 생성 시 이름도 세팅
       },
-      { runValidators: true, upsert: true } // 유효성검사 + 없으면 생성
+      { runValidators: true, upsert: true }, // 유효성검사 + 없으면 생성
     );
 
     // console.log("updateOne result:", res); // matchedCount/modifiedCount 확인
